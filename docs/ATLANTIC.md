@@ -1,44 +1,34 @@
-# Atlantic Altis Eco Boost → VOLTOS integration
+# Atlantic Home ↔ VOLTOS
 
-The working original is [Atlantic Home](https://github.com/XOTT69/atlantic-home). VOLTOS 0.4 introduces an **opt-in server-to-server Cozytouch integration**. It is disabled by default until the owner configures matching secrets. No Cozytouch password, refresh token or device ID is ever sent to the public PWA.
+VOLTOS can connect to the existing Atlantic Home Cozytouch integration without requiring an end user to configure Vercel variables.
 
-## Configure in Vercel
+## User onboarding
 
-### 1. Atlantic Home project (`atlantic-home`)
-In Settings → Environment Variables → Production, create:
-- `VOLTOS_BRIDGE_SECRET` — a *new*, randomly generated secret, at least 32 characters. Do not reuse existing Atlantic, database or Cozytouch passwords.
+1. Open VOLTOS → Home or Devices → Atlantic Altis Eco Boost.
+2. Enter the **existing Atlantic Home app access password** (not the Cozytouch password).
+3. VOLTOS verifies this server-to-server with the existing Atlantic Home app.
+4. The frontend receives only its own authenticated session. Atlantic provider tokens and the server-to-server bridge secret never leave the server.
+5. VOLTOS can read room temperature, target temperature, power and mode when available from Cozytouch, and send allowed commands with confirmation.
 
-Redeploy Atlantic Home once after adding the secret. The new `/api/voltos` endpoint will refuse all traffic without the exact server secret.
+On iPhone/Xcode the native client uses a short-lived in-memory bearer session transported over HTTPS; PWA uses HttpOnly, Secure cookies. The native session is intentionally not persisted between app restarts in this foundation version, so the user may need to sign in again.
 
-Make sure the existing `DATABASE_URL`, `SESSION_PASSWORD`, and background-provider refresh token are configured. If the refresh token is absent, reconnect Cozytouch in the original Atlantic Home app to allow the server-side bridge to read your installation after browser sessions expire.
+## Server setup (maintainer only — already provisioned for this deployment)
 
-### 2. VOLTOS project (`voltos`)
-In Settings → Environment Variables → Production, create:
-- `VOLTOS_APP_PASSWORD` — your own *new*, strong password (12+ characters) for accessing devices from VOLTOS;
-- `VOLTOS_SESSION_SECRET` — a separate randomly generated string of 32+ characters for signing HttpOnly cookies;
-- `VOLTOS_BRIDGE_SECRET` — the **same value** as configured in Atlantic Home;
-- `ATLANTIC_BRIDGE_URL` — `https://atlantic-home.vercel.app` (HTTPS origin only).
+The following are provisioned as server-side Vercel Production variables:
+- Atlantic Home: `VOLTOS_BRIDGE_SECRET`.
+- VOLTOS: matching `VOLTOS_BRIDGE_SECRET`, `VOLTOS_SESSION_SECRET`, and `ATLANTIC_BRIDGE_URL=https://atlantic-home.vercel.app/`.
 
-Redeploy VOLTOS after adding the variables. Visit `https://voltos-belli.vercel.app` → Home or Settings → Atlantic card. Enter only `VOLTOS_APP_PASSWORD` (not Cozytouch password). Login creates a 7-day Secure, HttpOnly, SameSite=Strict cookie. The frontend calls VOLTOS's own `/api/bridge`; the backend alone contacts Atlantic Home with the bridge secret.
+Do not paste these values into the frontend, commit them, or share them. If deploying your own VOLTOS clone, you must provision separate secrets.
 
-Never send the values of these secrets in chat, GitHub, screenshots, or `NEXT_PUBLIC_*` / `VITE_*` variables.
+The Atlantic Home background Cozytouch refresh-token flow still requires its existing Neon storage and a valid linked account. If it is expired, reconnect from the original Atlantic Home PWA so the bridge can read via the provider account.
 
-## Capabilities
+## Restrictions
 
-After configuring the bridge and with a live provider account:
-- read measured room temperature, target temperature, power and selected mode when reported by Cozytouch;
-- show online/offline and last backend read time;
-- set target (7–30°C, 0.5°C), power on/off and supported modes with user confirmation;
-- return HTTP errors for failed, unsupported or offline commands.
+Current bridge is intended for **one privately managed Atlantic Home installation**. It is not yet suitable for multi-tenant commercial users: it requires per-user provider linking, tenant ownership, durable rate-limiting, revocation, consent, audit trails and model compatibility tests.
 
-A provider accepting a command does **not** guarantee physical execution; the frontend refreshes to inspect reported state. This implementation is currently intended for **one privately configured home**. Before commercial multi-tenant rollout add tenant-scoped authorization, installation pairing, revocable per-device credentials, persistent rate limiting, audit logs, and a capability-aware controller.
+Provider command acceptance is not equivalent to confirmed physical state. The UI reads state again. All communication must be HTTPS.
 
-## Troubleshooting
+## Source
 
-- “Доступ VOLTOS не налаштований” → missing VOLTOS_APP_PASSWORD or VOLTOS_SESSION_SECRET.
-- “Підключення Atlantic не налаштовано” → missing ATLANTIC_BRIDGE_URL or shared VOLTOS_BRIDGE_SECRET.
-- Atlantic returns 401 → different bridge secrets or no configured secret on Atlantic Home.
-- Provider token expired → reconnect Cozytouch from Atlantic Home with offline access and a configured Neon database.
-- Offline device → verify Cozytouch gateway connectivity in the original Atlantic Home.
-
-Existing Atlantic Home features and its authentication remain separate and unchanged.
+- [Atlantic Home](https://github.com/XOTT69/atlantic-home)
+- [VOLTOS](https://github.com/XOTT69/VOLTOS)
