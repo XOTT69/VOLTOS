@@ -132,13 +132,15 @@ function eb3aTile(){
 function oukitelTile(){
  const d=state.oukitel,linked=state.oukitelAuthed;
  const options=state.oukitelList.length>1?'<label class="select-device">Пристрій<select id="ouk-select">'+state.oukitelList.map(x=>'<option value="'+h(x.deviceKey)+'" '+(x.deviceKey===state.oukitelId?'selected':'')+'>'+h(x.deviceName||x.productName)+'</option>').join('')+'</select></label>':'';
+ const oukControl=d&&d.device.online?'<div class="ouk-output-controls">'+([['ac','AC 230 В',d.acOn],['dc','DC',d.dcOn],['usb','USB',d.usbOn]] as const).map(([port,label,isOn])=>
+  '<div class="ouk-output"><span>'+label+'</span><button data-ouk-control="'+port+'" data-value="'+(isOn?'off':'on')+'" class="switch '+(isOn?'enabled':'')+'" '+(isOn===null||state.oukitelBusy?'disabled':'')+'>'+(isOn===null?'Н/Д':isOn?'Увімк.':'Вимк.')+'</button></div>').join('')+'</div><p class="tile-footnote">Керування через Cloud, із перевіркою стану після команди. Живлення критичних приладів вимикай обережно.</p>':'';
  const action=linked?'<div class="tile-actions">'+options+'<button data-action="ouk-refresh" class="btn secondary" '+(state.oukitelBusy?'disabled':'')+'>'+icon('refresh')+' Оновити</button><button data-action="ouk-logout" class="btn ghost">Відключити</button></div>':
  '<form id="ouk-login" class="login-form"><label>Електронна пошта<input required type="email" name="email" autocomplete="username" placeholder="Email акаунта Oukitel"/></label><label>Пароль<input required type="password" name="password" autocomplete="current-password" placeholder="Пароль Oukitel"/></label><button type="submit" class="btn primary" '+(state.oukitelBusy?'disabled':'')+'>Підключити Oukitel</button></form>';
  return '<article class="premium-tile">'+deviceHeader(d?.device.deviceName||'Oukitel P2001E Plus','cloud','ЗАРЯДНА СТАНЦІЯ · CLOUD','oukitel')+
  '<div class="tile-badge '+(d?'warn':'')+'">'+(d?'◉ Cloud Snapshot':linked?'○ Очікуємо дані':'○ Не підключено')+'</div>'+
  (d?'<div class="battery-detail"><strong>'+(d.soc===null?'—':d.soc+'%')+'</strong><div class="battery-progress"><i style="width:'+(d.soc??0)+'%"></i></div><span>Хмара · '+since(d.cloudCheckedAt)+'</span></div><div class="tile-data"><div><small>Вхід</small><strong>'+nf(d.inputWatts)+' Вт</strong></div><div><small>Вихід</small><strong>'+nf(d.outputWatts)+' Вт</strong></div><div><small>Температура</small><strong>'+(d.temperatureC===null?'—':d.temperatureC+'°C')+'</strong></div></div><p class="tile-footnote">Cloud може показувати збережені значення. Час фактичного вимірювання невідомий.</p>':
  '<p class="tile-empty">'+(linked?'Виконай оновлення для отримання даних із хмари.':'Авторизуйся у своєму акаунті Oukitel. Пароль не зберігається на телефоні.')+'</p>')+
- (state.oukitelError?'<p class="inline-error">'+h(state.oukitelError)+'</p>':'')+action+'</article>';
+ (state.oukitelError?'<p class="inline-error">'+h(state.oukitelError)+'</p>':'')+oukControl+action+'</article>';
 }
 function climateTile(){
  const d=state.atlantic,online=d?.deviceOnline;
@@ -214,6 +216,7 @@ function bind(){
   e.preventDefault();const f=new FormData(e.currentTarget as HTMLFormElement);
   void loginAtlantic(String(f.get('password')||''));
  });
+ root.querySelectorAll<HTMLButtonElement>('[data-ouk-control]').forEach(b=>b.onclick=()=>void controlOukitel(b.dataset.oukControl as 'ac'|'dc'|'usb',b.dataset.value==='on'));
  root.querySelector<HTMLSelectElement>('#ouk-select')?.addEventListener('change',e=>{
   state.oukitelId=(e.currentTarget as HTMLSelectElement).value;state.oukitel=null;void refreshOukitel();
  });
@@ -300,6 +303,21 @@ async function refreshOukitel(){
  try{state.oukitel=await oukitel.state(d);state.oukitelError=''}
  catch(e){state.oukitelError=e instanceof Error?e.message:String(e);state.oukitel=null}
  finally{state.oukitelBusy=false;render()}
+}
+async function controlOukitel(port:'ac'|'dc'|'usb',on:boolean){
+ if(!state.oukitel||state.oukitelBusy||!state.oukitel.device.online)return;
+ const current=port==='ac'?state.oukitel.acOn:port==='dc'?state.oukitel.dcOn:state.oukitel.usbOn;
+ if(current===null||current===on)return;
+ const warning=port==='ac'&&!on?'УВАГА: розетки 230 В будуть вимкнені. Це може знеструмити холодильник!\\n\\n':'';
+ if(!confirm(warning+'Змінити стан '+port.toUpperCase()+' на '+(on?'УВІМКНЕНО':'ВИМКНЕНО')+'?'))return;
+ state.oukitelBusy=true;render();
+ try{
+  const r=await oukitel.control(state.oukitel.device,port,on);
+  if(!r.accepted)throw Error('Хмара не прийняла команду');
+  toast(r.confirmed?'Cloud показує потрібний стан':'Команда прийнята, але стан ще не підтверджено',r.confirmed?'success':'info');
+ }catch(e){toast(e instanceof Error?e.message:'Помилка керування Oukitel','error')}
+ finally{state.oukitelBusy=false;render()}
+ void refreshOukitel();
 }
 async function logoutOukitel(){
  try{await oukitel.logout()}catch{}
