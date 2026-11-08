@@ -264,3 +264,7 @@ button,input,select{font-family:inherit}
  .connection-panel{padding:17px}
 }
 @media(max-width:360px){.charge-ring{width:115px;height:115px}.ring-center{width:97px;height:97px}.hero-inner{gap:11px}.hero-copy h2{font-size:18px}.hero-copy p{font-size:10px}.summary strong{font-size:19px}}
+
+.heater-open{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:12px 15px;color:#f3d8bb;background:#47352c;border:1px solid #80624c;border-radius:12px;font-size:12px;font-weight:750;text-decoration:none}
+.heater-open:focus-visible,.bottom-nav button:focus-visible,.action:focus-visible{outline:2px solid #8af5e7;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
