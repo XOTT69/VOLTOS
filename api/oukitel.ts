@@ -20,7 +20,8 @@ function encSession(token:string){
 }
 function decSession(req:VercelRequest){
  const k=key();if(!k)return null;
- const c=String(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName+'='))?.slice(cookieName.length+1);
+ const c=isNative(req)?String(req.headers.authorization||'').replace(/^Bearer /i,''):
+ String(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName+'='))?.slice(cookieName.length+1);
  if(!c||c.length>8192)return null;
  try{
   const b=Buffer.from(c,'base64url');if(b.length<30)return null;
@@ -30,6 +31,7 @@ function decSession(req:VercelRequest){
  }catch{return null;}
 }
 const cookie=(value:string,age:number)=>cookieName+'='+value+'; HttpOnly; Secure; SameSite=Strict; Path=/api/oukitel; Max-Age='+age;
+function isNative(req:VercelRequest){return req.headers['x-voltos-native']==='1'&&!req.headers.origin;}
 function isSameOrigin(req:VercelRequest){
  const host=req.headers['x-forwarded-host']||req.headers.host;
  const o=req.headers.origin;
@@ -82,7 +84,7 @@ async function devices(token:string):Promise<Device[]>{
 export default async function handler(req:VercelRequest,res:VercelResponse){
  headers(res);
  const action=Array.isArray(req.query.action)?req.query.action[0]:req.query.action;
- if(req.method==='POST'&&!isSameOrigin(req))return res.status(403).json({error:'Недозволене джерело запиту'});
+ if(req.method==='POST'&&!isSameOrigin(req)&&!isNative(req))return res.status(403).json({error:'Недозволене джерело запиту'});
  if(action==='session'&&req.method==='GET')return res.status(200).json({connected:Boolean(decSession(req))});
  if(action==='logout'&&req.method==='POST'){
   res.setHeader('Set-Cookie',cookie('',0));return res.status(200).json({connected:false});
@@ -94,7 +96,9 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
    return res.status(400).json({error:'Перевірте email і пароль Oukitel'});
   try{
    const token=await login(email,password);const list=await devices(token);
-   res.setHeader('Set-Cookie',cookie(encSession(token),maxAge));
+   const value=encSession(token);
+   if(isNative(req))return res.status(200).json({connected:true,devices:list,nativeToken:value});
+   res.setHeader('Set-Cookie',cookie(value,maxAge));
    return res.status(200).json({connected:true,devices:list});
   }catch(e){return res.status(401).json({error:e instanceof Error?e.message:'Помилка авторизації Oukitel'});}
  }
