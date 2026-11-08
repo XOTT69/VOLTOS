@@ -123,6 +123,24 @@ export class Eb3aBle {
       measuredAt:new Date().toISOString(),deviceName:this.name
     };
   }
+  /** Explicit user-initiated single-register write, followed by independent readback. */
+  async setRegister(addr:3007|3008|3034|3063|3065|3066, value:number):Promise<number>{
+    const allowed:Record<number,number[]>={3007:[0,1],3008:[0,1],3034:[1,2,3,4],3063:[0,1],3065:[0,1,2],3066:[0,1]};
+    if(!allowed[addr]?.includes(value))throw Error('Недозволене значення команди.');
+    if(!this.connected)throw Error('BLUETTI не підключено.');
+    const response=await this.transaction(6,addr,value);
+    if(response[2]!==((addr>>8)&255)||response[3]!==addr%256||
+       response[4]!==((value>>8)&255)||response[5]!==value%256)
+      throw Error('Неочікуване підтвердження Modbus.');
+    const actual=word(await this.read(addr,1),0);
+    if(actual!==value)throw Error('Станція не підтвердила виконання. Зчитано '+actual);
+    return actual;
+  }
+  /** Optional register values are loaded separately so basic telemetry survives missing firmware features. */
+  async readControls():Promise<{led:number|null;eco:number|null;chargeMode:number|null;lifting:number|null}>{
+    const optional=async(addr:number)=>{try{return word(await this.read(addr,1),0)}catch{return null}};
+    return {led:await optional(3034),eco:await optional(3063),chargeMode:await optional(3065),lifting:await optional(3066)};
+  }
   async disconnect():Promise<void>{
     const id=this.deviceId;this.deviceId=null;
     this.rejectPending(Error('Bluetooth від’єднано'));
