@@ -8,6 +8,9 @@ import { heaterCard } from './heater-ui';
 type Tab='home'|'devices'|'analytics'|'settings';
 type Metric='output'|'input'|'soc';
 type Point={at:number;soc:number;input:number;output:number};
+type CloudPoint={at:number;soc:number;input:number;output:number};
+type ClimatePoint={at:number;room:number;target:number};
+type ChartSource='bluetti'|'oukitel'|'atlantic';
 const ble=new Eb3aBle();
 const NATIVE=Capacitor.isNativePlatform();
 const $=(id:string)=>document.getElementById(id);
@@ -48,6 +51,22 @@ const icon=(key:string,cls='')=>'<svg class="'+cls+'" viewBox="0 0 24 24" aria-h
 const save=(key:string,value:string)=>{try{localStorage.setItem(key,value)}catch{}};
 const retrieve=(key:string,fallback:string)=>{try{return localStorage.getItem(key)??fallback}catch{return fallback}};
 const logKey='voltos-local-history-v2';
+const cloudLogKey='voltos-oukitel-cloud-samples-v1';
+const climateLogKey='voltos-atlantic-samples-v1';
+const loadSamples=<T extends {at:number}>(key:string):T[]=>{
+ try{
+  const records=JSON.parse(retrieve(key,'[]'));
+  return Array.isArray(records)?records.filter((r:unknown)=>r&&typeof r==='object'&&Number.isFinite((r as T).at)&&(r as T).at>Date.now()-30*86400000).slice(-10000):[];
+ }catch{return []}
+};
+let cloudPoints:CloudPoint[]=loadSamples<CloudPoint>(cloudLogKey);
+let climatePoints:ClimatePoint[]=loadSamples<ClimatePoint>(climateLogKey);
+const appendSample=<T extends {at:number}>(list:T[],item:T,key:string)=>{
+ if(list.at(-1)&&item.at-list[list.length-1].at<60000)return;
+ list.push(item);
+ while(list.length>10000||list[0]?.at<Date.now()-30*86400000)list.shift();
+ save(key,JSON.stringify(list));
+};
 const settings={
  alert:Number(retrieve('voltos-alert','20')),
  motion:retrieve('voltos-motion','on')==='on',
@@ -60,7 +79,7 @@ try{
  if(Array.isArray(data))points=data.filter(p=>p&&Number.isFinite(p.at)&&p.at>Date.now()-30*86400000&&Number.isFinite(p.output)).slice(-10000);
 }catch{}
 const state={
- tab:'home' as Tab,range:24,metric:'output' as Metric,
+ tab:'home' as Tab,range:24,metric:'output' as Metric,chartSource:'bluetti' as ChartSource,
  ble:null as Eb3aReading|null,
  bleBusy:false,bleConnecting:false,bleError:'',bleControls:null as {led:number|null;eco:number|null;chargeMode:number|null;lifting:number|null}|null,
  bleControlBusy:false,bleAlertSent:false,
@@ -255,7 +274,7 @@ async function action(name:string){
  if(name==='atl-refresh')return refreshAtlantic();
  if(name==='refresh-all')return Promise.allSettled([ble.connected?refreshBle():Promise.resolve(),state.oukitelAuthed?refreshOukitel():Promise.resolve(),state.atlanticAuthed?refreshAtlantic():Promise.resolve()]).then(()=>toast('Оновлення завершено'));
  if(name==='export')return exportCsv();
- if(name==='clear-history'&&confirm('Безповоротно видалити локальну історію EB3A?')){points=[];save(logKey,'[]');toast('Історію очищено','success')}
+ if(name==='clear-history'&&confirm('Безповоротно видалити локальну історію всіх пристроїв?')){points=[];cloudPoints=[];climatePoints=[];save(logKey,'[]');save(cloudLogKey,'[]');save(climateLogKey,'[]');toast('Історію очищено','success')}
 }
 async function connectBle(){
  if(state.bleConnecting)return;
@@ -310,7 +329,12 @@ async function refreshOukitel(){
  const d=state.oukitelList.find(x=>x.deviceKey===state.oukitelId)??state.oukitelList[0];
  if(!d)return;
  state.oukitelBusy=true;render();
- try{state.oukitel=await oukitel.state(d);state.oukitelError=''}
+ try{
+  state.oukitel=await oukitel.state(d);state.oukitelError='';
+  const reading=state.oukitel;
+  if(reading.soc!==null||reading.inputWatts!==null||reading.outputWatts!==null)
+   appendSample(cloudPoints,{at:Date.now(),soc:reading.soc??0,input:reading.inputWatts??0,output:reading.outputWatts??0},cloudLogKey);
+ }
  catch(e){state.oukitelError=e instanceof Error?e.message:String(e);state.oukitel=null}
  finally{state.oukitelBusy=false;render()}
 }
@@ -346,7 +370,12 @@ async function loginAtlantic(password:string){
 async function refreshAtlantic(){
  if(!state.atlanticAuthed||state.atlanticBusy)return;
  state.atlanticBusy=true;render();
- try{state.atlantic=await atlantic.state();state.atlanticError=''}
+ try{
+  state.atlantic=await atlantic.state();state.atlanticError='';
+  const d=state.atlantic;
+  if(d.roomTemperature!==null||d.targetTemperature!==null)
+   appendSample(climatePoints,{at:Date.now(),room:d.roomTemperature??NaN,target:d.targetTemperature??NaN},climateLogKey);
+ }
  catch(e){state.atlantic=null;state.atlanticError=e instanceof Error?e.message:String(e)}
  finally{state.atlanticBusy=false;render()}
 }
