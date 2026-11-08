@@ -5,6 +5,18 @@ const BASE='https://iot-api.quecteleu.com';
 const USER_DOMAIN='E.SP.4294967410';
 const cookieName='voltos_oukitel';
 const maxAge=12*60*60;
+const attempts=new Map<string,{count:number,expires:number}>();
+function rateLimit(req:VercelRequest){
+ const raw=String(req.headers['x-real-ip']||req.headers['x-forwarded-for']||'unknown').split(',')[0].trim();
+ const identifier=createHash('sha256').update(raw).digest('hex');
+ const now=Date.now();
+ for(const [key,v] of attempts)if(v.expires<now)attempts.delete(key);
+ if(attempts.size>3000)attempts.clear();
+ const v=attempts.get(identifier);
+ if(v&&v.expires>now&&v.count>=5)return false;
+ attempts.set(identifier,{count:(v?.expires&&v.expires>now?v.count:0)+1,expires:now+15*60*1000});
+ return true;
+}
 type Device={productKey:string;deviceKey:string;deviceName:string;productName:string;online:boolean};
 const safeId=(x:unknown):x is string=>typeof x==='string'&&/^[\w-]{1,96}$/.test(x);
 function key(){
@@ -91,6 +103,8 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
   res.setHeader('Set-Cookie',cookie('',0));return res.status(200).json({connected:false});
  }
  if(action==='login'&&req.method==='POST'){
+  if(!rateLimit(req))return res.status(429).json({error:'Забагато спроб входу. Повторіть через 15 хвилин.'});
+  if(Number(req.headers['content-length']||0)>4096)return res.status(413).json({error:'Завеликий запит'});
   const email=typeof req.body?.email==='string'?req.body.email.trim():'';
   const password=typeof req.body?.password==='string'?req.body.password:'';
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<1||password.length>256)
