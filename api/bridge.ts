@@ -17,7 +17,10 @@ function signed(payload:string,secret:string){
 function session(req:VercelRequest){
  const secret=sessionSecret();
  if(!secret)return false;
- const cookie=String(req.headers.cookie??'').split(';').map(s=>s.trim()).find(s=>s.startsWith(cookieName+'='))?.split('=').slice(1).join('=');
+ const cookie=(
+  isNative(req)?String(req.headers.authorization||'').replace(/^Bearer /i,''):
+  String(req.headers.cookie??'').split(';').map(s=>s.trim()).find(s=>s.startsWith(cookieName+'='))?.split('=').slice(1).join('=')
+ );
  if(!cookie)return false;
  const [value,tag]=cookie.split('.');
  if(!value||!tag||!secureEqual(signed(value,secret),tag))return false;
@@ -26,6 +29,7 @@ function session(req:VercelRequest){
   return Number.isFinite(data.expires)&&data.expires>Date.now();
  }catch{return false;}
 }
+function isNative(req:VercelRequest){return req.headers['x-voltos-native']==='1'&&!req.headers.origin;}
 function headers(res:VercelResponse){
  res.setHeader('Cache-Control','private, no-store');
  res.setHeader('X-Content-Type-Options','nosniff');
@@ -62,7 +66,7 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
  headers(res);
  const op=Array.isArray(req.query.action)?req.query.action[0]:req.query.action;
  if(op==='login'&&req.method==='POST'){
-  if(!sameOrigin(req))return res.status(403).json({error:'Недозволений Origin'});
+  if(!sameOrigin(req)&&!isNative(req))return res.status(403).json({error:'Недозволений Origin'});
   const secret=sessionSecret();
   if(!secret)return res.status(503).json({error:'Сервіс авторизації не налаштований'});
   const supplied=typeof req.body?.password==='string'?req.body.password:'';
@@ -72,11 +76,12 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
     return res.status(verification.status===401?401:verification.status).json({error:(verification.payload as {error?:string}).error||'Atlantic Home не підтвердив пароль'});
   const payload=Buffer.from(JSON.stringify({expires:Date.now()+ttl*1000})).toString('base64url');
   const value=payload+'.'+signed(payload,secret);
+  if(isNative(req))return res.status(200).json({authenticated:true,nativeToken:value});
   res.setHeader('Set-Cookie',cookieName+'='+value+'; HttpOnly; Secure; SameSite=Strict; Path=/api/bridge; Max-Age='+ttl);
   return res.status(200).json({authenticated:true});
  }
  if(op==='logout'&&req.method==='POST'){
-  if(!sameOrigin(req))return res.status(403).json({error:'Недозволений Origin'});
+  if(!sameOrigin(req)&&!isNative(req))return res.status(403).json({error:'Недозволений Origin'});
   res.setHeader('Set-Cookie',cookieName+'=; HttpOnly; Secure; SameSite=Strict; Path=/api/bridge; Max-Age=0');
   return res.status(200).json({authenticated:false});
  }
@@ -89,7 +94,7 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
   return res.status(data.status).json(data.payload);
  }
  if(op==='control'&&req.method==='POST'){
-  if(!sameOrigin(req))return res.status(403).json({error:'Недозволений Origin'});
+  if(!sameOrigin(req)&&!isNative(req))return res.status(403).json({error:'Недозволений Origin'});
   const body=req.body??{};
   if(!body||typeof body!=='object'||Array.isArray(body))return res.status(400).json({error:'Некоректні дані'});
   const action=body.action;
