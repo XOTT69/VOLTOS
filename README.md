@@ -1,6 +1,12 @@
 # VOLTOS ⚡ Energy OS
 
-A local-first multi-brand home energy platform. **VOLTOS 0.2 is an early development preview, not a commercial or safety-certified release.**
+A local-first multi-brand home energy platform. **VOLTOS 0.3 is an early development preview, not a commercial or safety-certified release.**
+
+## Live PWA preview
+
+https://voltos-belli.vercel.app
+
+PWA is for reviewing design, interactions and preview charts. iPhone Safari does not provide Web Bluetooth; actual EB3A BLE telemetry and controls must be tested using the iOS app created by Capacitor/Xcode. Do not mistake demo energy charts for physical measurements.
 
 ## What works now
 
@@ -8,11 +14,14 @@ A local-first multi-brand home energy platform. **VOLTOS 0.2 is an early develop
 - Read-only battery charge, AC/DC input and output power, AC/DC outlet state, and measurement timestamp
 - Manual refresh and polling while the app is visible
 - 30-day local telemetry samples recorded once per minute while open
-- Basic actual-data chart, direct current battery runtime estimate
+- Analytics with 1h / 24h / 7-day filters, output/input/SOC, CSV export, runtime estimate
+- EB3A AC/DC, LED, ECO, Power Lifting and charging mode control with explicit confirmation and Modbus readback (requires hardware validation before routine use)
+- Local charge threshold warning while the app is open
+- Premium dashboard visuals and separate, explicitly-labeled design preview charts
 - Separate demo cards when no device is connected
 - Stable tab bar and independent scroll area with safe-area handling in iOS
 
-**Not yet implemented:** OUKITEL in this app, remote/cloud accounts, always-on background BLE monitoring, automated AC/DC control, billing, push or iOS widgets. Existing [OUKITEL Home](https://github.com/XOTT69/oukite) is separate and must keep running independently.
+**Not yet implemented:** OUKITEL inside VOLTOS, remote/cloud accounts, always-on background BLE monitoring, device automations, remote push, billing or iOS widgets. Existing [OUKITEL Home](https://github.com/XOTT69/oukite) is separate and must keep running independently.
 
 ## Run on iPhone (Xcode)
 
