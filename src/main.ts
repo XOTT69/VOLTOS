@@ -4,6 +4,7 @@ import { Eb3aBle, type Eb3aReading } from './eb3a';
 import { demoDevices } from './model';
 import { atlantic, type AtlanticState } from './atlantic';
 import { heaterCard } from './heater-ui';
+import { oukitel, type OukitelDevice, type OukitelReading } from './oukitel';
 
 const el=document.querySelector<HTMLDivElement>('#app');
 if(!el)throw Error('Не знайдено контейнер застосунку');
@@ -21,6 +22,13 @@ let heaterAuthed=false;
 let heaterConfigured=false;
 let heaterPending=false;
 let heaterError='';
+let oukitelConnected=false;
+let oukitelDevices:OukitelDevice[]=[];
+let oukitelReading:OukitelReading|null=null;
+let oukitelLoading=false;
+let oukitelError='';
+let chosenOukitel='';
+
 let chartHours=24;
 let threshold=Number(localStorage.getItem('voltos-low-battery')||20);
 if(!Number.isFinite(threshold)||threshold<5||threshold>90)threshold=20;
@@ -59,6 +67,18 @@ function saveSample(r:Eb3aReading){
  history.push({at:now,soc:r.soc,input:r.inputWatts,output:r.outputWatts});
  history=history.filter(p=>p.at>now-30*86400000).slice(-5000);
  try{localStorage.setItem(HISTORY_KEY,JSON.stringify(history));}catch{}
+}
+
+function oukitelPanel(){
+ const d=oukitelReading,linked=oukitelConnected;
+ const charging=d?.inputWatts==null?'—':format(d.inputWatts);
+ const load=d?.outputWatts==null?'—':format(d.outputWatts);
+ const charge=d?.soc==null?'—':d.soc+'%';
+ const values=d?'<div class="ouk-metrics"><div><span>Заряд</span><strong>'+charge+'</strong></div><div><span>Вхід</span><strong>'+charging+' <small>Вт</small></strong></div><div><span>Вихід</span><strong>'+load+' <small>Вт</small></strong></div></div><div class="ouk-foot">Cloud перевірено '+stamp(d.cloudCheckedAt)+' · Фактична свіжість вимірювання невідома</div>':'';
+ const options=oukitelDevices.length>1?'<label class="device-picker">Станція<select id="oukitel-select">'+oukitelDevices.map(x=>'<option value="'+escapeHtml(x.deviceKey)+'" '+(x.deviceKey===chosenOukitel?'selected':'')+'>'+escapeHtml(x.deviceName||x.productName||'Oukitel')+'</option>').join('')+'</select></label>':'';
+ const form=!linked?'<form id="oukitel-login" class="device-login"><label>Email застосунку Oukitel<input name="email" type="email" autocomplete="username" placeholder="Email" required/></label><label>Пароль Oukitel<input name="password" type="password" autocomplete="current-password" placeholder="Пароль" required/></label><button type="submit" class="action primary" '+(oukitelLoading?'disabled':'')+'>Підключити Oukitel</button></form>':
+ '<div class="oukitel-actions">'+options+'<button id="oukitel-refresh" class="action primary" '+(oukitelLoading?'disabled':'')+'>Оновити показники</button><button id="oukitel-logout" class="action outline">Від’єднати</button></div>';
+ return '<section class="ouk-card"><div class="ouk-head"><span class="ouk-icon">ϟ</span><div><small>ЗАРЯДНА СТАНЦІЯ · CLOUD</small><h3>'+escapeHtml(d?.device.deviceName||'Oukitel P2001E Plus')+'</h3></div><span class="status '+(d?'':'')+'">'+(d?'CLOUD':'НЕ ПІДКЛЮЧЕНО')+'</span></div>'+values+form+(oukitelError?'<p class="error-note">'+escapeHtml(oukitelError)+'</p>':'')+'<div class="ouk-foot">Без збереження пароля на телефоні. Серверна сесія захищена.</div></section>';
 }
 
 function hero(){
@@ -107,7 +127,7 @@ function render(){
  const info='<div class="connection-panel"><div class="connect-description"><span class="eyebrow">BLUETTI EB3A · BLE</span><h2>'+(reading?'Станція підключена':'Підключити станцію')+'</h2><p>Нативний Bluetooth на iPhone. Реальні показники заряду й потужності з твоєї EB3A.</p><p class="connection-state">'+escapeHtml(statusText)+'</p>'+(reading?'<p class="measured">Вимірювання: '+stamp(reading.measuredAt)+' · AC '+(reading.acEnabled?'увімкнено':'вимкнено')+' · DC '+(reading.dcEnabled?'увімкнено':'вимкнено')+'</p>':'')+(lastError?'<p class="error-note">'+escapeHtml(lastError)+'</p>':'')+'</div><div class="connect-actions">'+(eb3a.connected?'<button id="refresh" class="action primary">'+icon('refresh')+' Оновити</button><button id="disconnect" class="action outline">Від’єднати</button>':'<button id="connect" class="action primary">'+icon('bluetooth')+' '+(connecting?'Підключення…':'Знайти EB3A')+'</button>')+'</div></div>';
  let body='';
  if(selected==='home'||selected==='devices'){
-  body=(selected==='home'?hero()+summary:info+summary)+heaterCard(heater,heaterAuthed,heaterConfigured,heaterPending,heaterError,escapeHtml,stamp)+controlsMarkup()+'<div class="section-title"><h2>'+(live?'Реальні пристрої':'Попередній перегляд карток')+'</h2><span>'+(live?'1 підключено':'Демо без підключення')+'</span></div><div class="device-grid">'+cards+'</div>';
+  body=(selected==='home'?hero()+summary:info+summary)+oukitelPanel()+heaterCard(heater,heaterAuthed,heaterConfigured,heaterPending,heaterError,escapeHtml,stamp)+controlsMarkup()+'<div class="section-title"><h2>'+(live?'Реальні пристрої':'Попередній перегляд карток')+'</h2><span>'+(live?'1 підключено':'Демо без підключення')+'</span></div><div class="device-grid">'+cards+'</div>';
  }else if(selected==='analytics'){
   body=analyticsMarkup();
  }else{
@@ -124,6 +144,13 @@ function render(){
  document.querySelectorAll<HTMLButtonElement>('[data-heat-temp]').forEach(b=>b.onclick=()=>{if(heater?.targetTemperature!=null)void heaterControl('temperature',heater.targetTemperature+Number(b.dataset.heatTemp));});
  document.querySelectorAll<HTMLButtonElement>('[data-heat-power]').forEach(b=>b.onclick=()=>void heaterControl('power',b.dataset.heatPower==='on'));
  document.getElementById('heater-mode')?.addEventListener('change',e=>{const mode=(e.currentTarget as HTMLSelectElement).value;if(mode)void heaterControl('mode',mode);});
+ document.getElementById('oukitel-login')?.addEventListener('submit',e=>{
+  e.preventDefault();const data=new FormData(e.currentTarget as HTMLFormElement);
+  void oukitelLogin(String(data.get('email')||''),String(data.get('password')||''));
+ });
+ document.getElementById('oukitel-refresh')?.addEventListener('click',()=>void refreshOukitel());
+ document.getElementById('oukitel-logout')?.addEventListener('click',()=>void disconnectOukitel());
+ document.getElementById('oukitel-select')?.addEventListener('change',e=>{chosenOukitel=(e.currentTarget as HTMLSelectElement).value;oukitelReading=null;void refreshOukitel();});
  document.querySelectorAll<HTMLButtonElement>('[data-control]').forEach(b=>b.onclick=()=>void runControl(b.dataset.control||'',Number(b.dataset.value)));
  document.querySelectorAll<HTMLSelectElement>('[data-control-select]').forEach(b=>b.onchange=()=>void runControl(b.dataset.controlSelect||'',Number(b.value)));
  document.querySelectorAll<HTMLButtonElement>('[data-hours]').forEach(b=>b.onclick=()=>{chartHours=Number(b.dataset.hours);render();});
@@ -212,3 +239,39 @@ async function heaterControl(action:'temperature'|'power'|'mode',value:number|bo
 }
 void atlantic.session().then(s=>{heaterAuthed=s.authenticated;heaterConfigured=s.configured;render();if(heaterAuthed)void heaterRefresh()}).catch(()=>{heaterError='Серверний доступ недоступний';render()});
 setInterval(()=>{if(heaterAuthed&&!heaterPending&&document.visibilityState==='visible')void heaterRefresh()},45000);
+
+async function oukitelLogin(email:string,password:string){
+ if(oukitelLoading)return;
+ oukitelLoading=true;oukitelError='';render();
+ try{
+  const r=await oukitel.login(email,password);
+  oukitelConnected=r.connected;oukitelDevices=r.devices;
+  chosenOukitel=r.devices[0]?.deviceKey||'';
+  if(!r.devices.length)oukitelError='В акаунті немає прив’язаних станцій.';
+ }catch(e){oukitelError=e instanceof Error?e.message:'Помилка Oukitel';}
+ finally{oukitelLoading=false;render();}
+ if(oukitelConnected&&oukitelDevices.length)void refreshOukitel();
+}
+async function refreshOukitel(){
+ if(!oukitelConnected||oukitelLoading)return;
+ const d=oukitelDevices.find(x=>x.deviceKey===chosenOukitel)||oukitelDevices[0];
+ if(!d)return;
+ oukitelLoading=true;oukitelError='';render();
+ try{oukitelReading=await oukitel.state(d);}
+ catch(e){oukitelError=e instanceof Error?e.message:'Немає даних Oukitel';oukitelReading=null;}
+ finally{oukitelLoading=false;render();}
+}
+async function disconnectOukitel(){
+ if(oukitelLoading)return;
+ oukitelLoading=true;render();
+ try{await oukitel.logout();oukitelConnected=false;oukitelDevices=[];oukitelReading=null;oukitelError='';chosenOukitel='';}
+ catch(e){oukitelError=e instanceof Error?e.message:'Помилка виходу';}
+ finally{oukitelLoading=false;render();}
+}
+void oukitel.session().then(async r=>{
+ oukitelConnected=r.connected;
+ if(r.connected){try{const data=await oukitel.devices();oukitelDevices=data.devices;chosenOukitel=data.devices[0]?.deviceKey||'';}catch(e){oukitelError=e instanceof Error?e.message:'Немає пристроїв';}}
+ render();
+ if(oukitelConnected&&oukitelDevices.length)void refreshOukitel();
+}).catch(()=>{});
+setInterval(()=>{if(oukitelConnected&&!oukitelLoading&&document.visibilityState==='visible')void refreshOukitel();},30000);
