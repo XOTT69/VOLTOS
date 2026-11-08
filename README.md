@@ -1,6 +1,6 @@
 # VOLTOS ⚡ Energy OS
 
-A local-first multi-brand home energy platform. **VOLTOS 0.4 is an early development preview, not a commercial or safety-certified release.**
+A local-first multi-brand home energy platform. **VOLTOS 0.5 is an early development preview, not a commercial or safety-certified release.**
 
 ## Live PWA preview
 
@@ -18,11 +18,13 @@ PWA is for reviewing design, interactions and preview charts. iPhone Safari does
 - EB3A AC/DC, LED, ECO, Power Lifting and charging mode control with explicit confirmation and Modbus readback (requires hardware validation before routine use)
 - Local charge threshold warning while the app is open
 - Premium dashboard with energy flow, compact mobile cards, responsive bottom navigation, and explicitly-labeled design preview charts
-- Atlantic Altis Eco Boost card with temperature, modes, and power controls via optional **server-only** Atlantic Home bridge; see [setup](docs/ATLANTIC.md). The bridge is disabled until configured.
+- Atlantic Altis Eco Boost connected through existing Atlantic Home access password, with secure server-to-server Cozytouch gateway; see [Atlantic](docs/ATLANTIC.md). Server-only secrets are already provisioned in the maintainer's Vercel deployment.
+- Oukitel P2001E Plus cloud login in VOLTOS using existing manufacturer email/password, device discovery, charge and power readouts via conservative Cloud Shadow parsing; see [Oukitel](docs/OUKITEL.md).
+- PWA browser sessions via secure HttpOnly cookies; Capacitor/iOS sessions via native HTTPS and memory-only bearer credentials.
 - Separate demo cards when no device is connected
 - Stable tab bar and independent scroll area with safe-area handling in iOS
 
-**Not yet implemented:** automatic Atlantic pairing for multiple end users, OUKITEL inside VOLTOS, remote/cloud accounts, always-on background BLE monitoring, device automations, remote push, billing or iOS widgets. Existing [OUKITEL Home](https://github.com/XOTT69/oukite) is separate and must keep running independently.
+**Not yet implemented:** production multi-tenant customer accounts, validated Oukitel control commands, automatic persistent native sessions, remote/cloud accounts, always-on background BLE monitoring, device automations, remote push, billing or iOS widgets. Existing [OUKITEL Home](https://github.com/XOTT69/oukite) is separate and must keep running independently.
 
 ## Run on iPhone (Xcode)
 
