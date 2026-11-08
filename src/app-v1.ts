@@ -6,7 +6,7 @@ import { oukitel, type OukitelDevice, type OukitelReading } from './oukitel';
 import { heaterCard } from './heater-ui';
 
 type Tab='home'|'devices'|'analytics'|'settings';
-type Metric='output'|'input'|'soc';
+type Metric='output'|'input'|'soc'|'room'|'target';
 type Point={at:number;soc:number;input:number;output:number};
 type CloudPoint={at:number;soc:number;input:number;output:number};
 type ClimatePoint={at:number;room:number;target:number};
@@ -199,22 +199,43 @@ function controls(){
  opts('Ліхтарик','led',state.bleControls?.led??null,[[4,'Вимкнено'],[1,'Слабкий'],[2,'Яскравий'],[3,'SOS']])+'</div><p class="safety-note">'+icon('warning')+' Вимкнення AC може знеструмити підключені прилади. Перевіряй команду перед підтвердженням.</p></section>';
 }
 function chart(){
- const chosen=points.filter(p=>p.at>Date.now()-state.range*3600000);
- const values=chosen.map(p=>state.metric==='soc'?p.soc:state.metric==='input'?p.input:p.output);
- const max=Math.max(1,...values);
+ const source=state.chartSource;
+ const raw=source==='bluetti'?points:source==='oukitel'?cloudPoints:climatePoints;
+ const records=raw.filter(p=>p.at>Date.now()-state.range*3600000);
+ const value=(p:Point|CloudPoint|ClimatePoint):number=>{
+  if(source==='atlantic'){
+   const v=p as ClimatePoint;
+   return (state.metric==='target'?v.target:v.room);
+  }
+  const v=p as Point;
+  return state.metric==='soc'?v.soc:state.metric==='input'?v.input:v.output;
+ };
+ const chosen=records.filter(p=>Number.isFinite(value(p))).slice(-300);
+ const values=chosen.map(value);
+ const max=Math.max(1,...values),min=(source==='atlantic'&&values.length)?Math.min(...values)-1:0;
  let graph='';
  if(chosen.length>1){
-  const pts=values.map((v,i)=>[(i/(values.length-1)*100).toFixed(2),(96-(v/max*87)).toFixed(2)]);
-  graph='<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Графік реальних показників"><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#6ce4d7" stop-opacity=".25"/><stop offset="1" stop-color="#6ce4d7" stop-opacity="0"/></linearGradient></defs><path d="M'+pts.map(a=>a.join(',')).join(' L')+' L100,100 L0,100Z" fill="url(#area)"/><polyline points="'+pts.map(a=>a.join(',')).join(' ')+'" fill="none" stroke="#7ce7dd" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg>';
- }else graph='<div class="chart-empty">'+icon('analytics')+'<strong>Тут з’явиться історія</strong><span>Підключи EB3A та залиш VOLTOS відкритим для накопичення вимірювань.</span></div>';
- const metricButtons=([['output','Вихід'],['input','Вхід'],['soc','Заряд']] as [Metric,string][]).map(([v,l])=>'<button data-metric="'+v+'" class="'+(state.metric===v?'selected':'')+'">'+l+'</button>').join('');
- const ranges=([1,24,168] as number[]).map((v,i)=>'<button data-range="'+v+'" class="'+(state.range===v?'selected':'')+'">'+['1 год','24 год','7 днів'][i]+'</button>').join('');
- return '<section class="analytics-card"><div class="analytics-head"><div><div class="section-eyebrow">ENERGY INSIGHTS</div><h2>Аналітика споживання</h2></div><button data-action="export" class="icon-btn" aria-label="Експорт CSV">'+icon('download')+'</button></div><div class="chart-switches">'+metricButtons+'</div><div class="chart-wrap">'+graph+'</div><div class="chart-footer"><span>'+chosen.length+' точок · '+(state.metric==='soc'?'%':'Вт')+'</span><div class="chart-range">'+ranges+'</div></div><p class="fine-print">Локальна історія EB3A записується лише під час активної роботи застосунку. Дані Oukitel Cloud не включені до цього графіка.</p></section>';
+  const range=Math.max(1,max-min);
+  const pts=values.map((v,i)=>[(i/(values.length-1)*100).toFixed(2),(96-((v-min)/range*85)).toFixed(2)]);
+  graph='<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Графік фактичних записів"><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#6ce4d7" stop-opacity=".25"/><stop offset="1" stop-color="#6ce4d7" stop-opacity="0"/></linearGradient></defs><path d="M'+pts.map(a=>a.join(',')).join(' L')+' L100,100 L0,100Z" fill="url(#area)"/><polyline points="'+pts.map(a=>a.join(',')).join(' ')+'" fill="none" stroke="#7ce7dd" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg>';
+ }else graph='<div class="chart-empty">'+icon('analytics')+'<strong>Історія ще накопичується</strong><span>Підключи пристрій і залиш застосунок відкритим, щоб бачити фактичні записи.</span></div>';
+ const sources=([['bluetti','BLUETTI'],['oukitel','OUKITEL'],['atlantic','ATLANTIC']] as [ChartSource,string][])
+  .map(([id,label])=>'<button data-source="'+id+'" class="'+(source===id?'selected':'')+'">'+label+'</button>').join('');
+ const available=(source==='atlantic'?[['room','У кімнаті'],['target','Цільова']]:[['output','Вихід'],['input','Вхід'],['soc','Заряд']]) as [Metric,string][];
+ const metricButtons=available.map(([id,label])=>'<button data-metric="'+id+'" class="'+(state.metric===id?'selected':'')+'">'+label+'</button>').join('');
+ const ranges=[1,24,168].map((v,i)=>'<button data-range="'+v+'" class="'+(state.range===v?'selected':'')+'">'+['1 год','24 год','7 днів'][i]+'</button>').join('');
+ const note=source==='oukitel'?'Це історія відповідей Cloud Snapshot, а не підтверджений момент вимірювання станцією.':
+  source==='atlantic'?'Температури отримані з Cozytouch під час відкритого VOLTOS.':
+  'Вимірювання EB3A записуються з Bluetooth, поки застосунок активний.';
+ return '<section class="analytics-card"><div class="analytics-head"><div><div class="section-eyebrow">ENERGY INSIGHTS</div><h2>Аналітика</h2></div><button data-action="export" class="icon-btn" aria-label="Експорт CSV">'+icon('download')+'</button></div>'+
+ '<div class="chart-switches source-switch">'+sources+'</div><div class="chart-switches">'+metricButtons+'</div>'+
+ '<div class="chart-wrap">'+graph+'</div><div class="chart-footer"><span>'+chosen.length+' записів · '+(source==='atlantic'?'°C':state.metric==='soc'?'%':'Вт')+'</span><div class="chart-range">'+ranges+'</div></div><p class="fine-print">'+note+' Зберігання локальне, до 30 днів.</p></section>';
 }
+
 function settingsPage(){
  return '<section class="settings-stack"><div class="settings-panel"><div class="section-heading"><h2>Сповіщення</h2><span>Локальні</span></div><p>Повідомимо про низький заряд EB3A, поки застосунок активний.</p><label class="threshold-title" for="alert">Сповістити нижче <strong>'+settings.alert+'%</strong></label><input id="alert" type="range" min="5" max="90" step="5" value="'+settings.alert+'"/></div>'+
  '<div class="settings-panel"><div class="section-heading"><h2>Застосунок</h2><span>VOLTOS</span></div><div class="settings-row"><span>Версія</span><strong>1.0 iPhone Test</strong></div><div class="settings-row"><span>Платформа</span><strong>'+(NATIVE?'iOS / Capacitor':'PWA / браузер')+'</strong></div><div class="settings-row"><span>BLE на iPhone</span><strong>'+(NATIVE?'Нативний':'Потрібен Xcode')+'</strong></div><div class="settings-row"><span>Джерела</span><strong>BLUETTI · Oukitel · Atlantic</strong></div></div>'+
- '<div class="settings-panel"><div class="section-heading"><h2>Дані та приватність</h2></div><p>Паролі виробників не зберігаються в локальному сховищі. Для аналітики EB3A зберігаються лише вимірювання на твоєму пристрої.</p><button class="btn secondary" data-action="export">'+icon('download')+' Завантажити CSV</button><button class="btn danger" data-action="clear-history">Очистити локальну історію</button></div>'+
+ '<div class="settings-panel"><div class="section-heading"><h2>Дані та приватність</h2></div><p>Паролі виробників не зберігаються в локальному сховищі. Для аналітики зберігаються лише отримані показники пристроїв локально на твоєму iPhone.</p><button class="btn secondary" data-action="export">'+icon('download')+' Завантажити CSV</button><button class="btn danger" data-action="clear-history">Очистити локальну історію</button></div>'+
  '<div class="settings-panel"><div class="section-heading"><h2>Про VOLTOS</h2></div><p>Об’єднує доступні джерела енергетики. Показники залежать від підтримки конкретного обладнання та доступності його API.</p><a href="https://github.com/XOTT69/VOLTOS" target="_blank" rel="noopener noreferrer" class="external-link">GitHub VOLTOS '+icon('chevron')+'</a></div></section>';
 }
 function bottomNav(){
@@ -259,6 +280,7 @@ function bind(){
  });
  root.querySelectorAll<HTMLButtonElement>('[data-ble-control]').forEach(b=>b.onclick=()=>void controlBle(b.dataset.bleControl||'',Number(b.dataset.value)));
  root.querySelectorAll<HTMLSelectElement>('[data-ble-select]').forEach(b=>b.onchange=()=>void controlBle(b.dataset.bleSelect||'',Number(b.value)));
+ root.querySelectorAll<HTMLButtonElement>('[data-source]').forEach(b=>b.onclick=()=>{state.chartSource=b.dataset.source as ChartSource;state.metric=state.chartSource==='atlantic'?'room':'output';render()});
  root.querySelectorAll<HTMLButtonElement>('[data-metric]').forEach(b=>b.onclick=()=>{state.metric=b.dataset.metric as Metric;render()});
  root.querySelectorAll<HTMLButtonElement>('[data-range]').forEach(b=>b.onclick=()=>{state.range=Number(b.dataset.range);render()});
  root.querySelector<HTMLInputElement>('#alert')?.addEventListener('change',e=>{
@@ -392,12 +414,18 @@ async function controlAtlantic(action:'temperature'|'power'|'mode',value:number|
  await refreshAtlantic();
 }
 function exportCsv(){
- const lines=['date,soc,input_w,output_w',...points.map(p=>[new Date(p.at).toISOString(),p.soc,p.input,p.output].join(','))];
+ const source=state.chartSource;
+ const lines=source==='atlantic'?
+  ['date,room_c,target_c',...climatePoints.map(p=>[new Date(p.at).toISOString(),p.room??'',p.target??''].join(','))]:
+  source==='oukitel'?
+  ['date,soc,input_w,output_w,source',...cloudPoints.map(p=>[new Date(p.at).toISOString(),p.soc,p.input,p.output,'cloud_snapshot'].join(','))]:
+  ['date,soc,input_w,output_w',...points.map(p=>[new Date(p.at).toISOString(),p.soc,p.input,p.output].join(','))];
  const a=document.createElement('a');
- const url=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'}));
- a.href=url;a.download='voltos-eb3a-history.csv';a.click();
+ const url=URL.createObjectURL(new Blob([lines.join('\\n')],{type:'text/csv;charset=utf-8'}));
+ a.href=url;a.download='voltos-'+source+'-history.csv';a.click();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+
 async function restore(){
  try{
   const a=await atlantic.session();state.atlanticAuthed=a.authenticated;state.atlanticConfigured=a.configured;
