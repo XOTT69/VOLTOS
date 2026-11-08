@@ -2,6 +2,8 @@ import './style.css';
 import { Capacitor } from '@capacitor/core';
 import { Eb3aBle, type Eb3aReading } from './eb3a';
 import { demoDevices } from './model';
+import { atlantic, type AtlanticState } from './atlantic';
+import { heaterCard } from './heater-ui';
 
 const el=document.querySelector<HTMLDivElement>('#app');
 if(!el)throw Error('Не знайдено контейнер застосунку');
@@ -14,6 +16,11 @@ let statusText='Не підключено';
 let lastError='';
 let controls: {led:number|null;eco:number|null;chargeMode:number|null;lifting:number|null}|null=null;
 let controlBusy=false;
+let heater:AtlanticState|null=null;
+let heaterAuthed=false;
+let heaterConfigured=false;
+let heaterPending=false;
+let heaterError='';
 let chartHours=24;
 let threshold=Number(localStorage.getItem('voltos-low-battery')||20);
 if(!Number.isFinite(threshold)||threshold<5||threshold>90)threshold=20;
@@ -97,11 +104,11 @@ function render(){
  const info='<div class="connection-panel"><div class="connect-description"><span class="eyebrow">BLUETTI EB3A · BLE</span><h2>'+(reading?'Станція підключена':'Підключити станцію')+'</h2><p>Нативний Bluetooth на iPhone. Реальні показники заряду й потужності з твоєї EB3A.</p><p class="connection-state">'+escapeHtml(statusText)+'</p>'+(reading?'<p class="measured">Вимірювання: '+stamp(reading.measuredAt)+' · AC '+(reading.acEnabled?'увімкнено':'вимкнено')+' · DC '+(reading.dcEnabled?'увімкнено':'вимкнено')+'</p>':'')+(lastError?'<p class="error-note">'+escapeHtml(lastError)+'</p>':'')+'</div><div class="connect-actions">'+(eb3a.connected?'<button id="refresh" class="action primary">'+icon('refresh')+' Оновити</button><button id="disconnect" class="action outline">Від’єднати</button>':'<button id="connect" class="action primary">'+icon('bluetooth')+' '+(connecting?'Підключення…':'Знайти EB3A')+'</button>')+'</div></div>';
  let body='';
  if(selected==='home'||selected==='devices'){
-  body=(selected==='home'?hero():'')+info+summary+controlsMarkup()+'<div class="section-title"><h2>'+(live?'Реальні пристрої':'Попередній перегляд карток')+'</h2><span>'+(live?'1 підключено':'Демо без підключення')+'</span></div><div class="device-grid">'+cards+'</div>';
+  body=(selected==='home'?hero()+heaterCard(heater,heaterAuthed,heaterConfigured,heaterPending,heaterError,escapeHtml,stamp):'')+info+summary+controlsMarkup()+'<div class="section-title"><h2>'+(live?'Реальні пристрої':'Попередній перегляд карток')+'</h2><span>'+(live?'1 підключено':'Демо без підключення')+'</span></div><div class="device-grid">'+cards+'</div>';
  }else if(selected==='analytics'){
   body=analyticsMarkup();
  }else{
-  body='<div class="history-panel"><span class="eyebrow">ПОПЕРЕДЖЕННЯ</span><h2>Низький заряд</h2><p>Локальне попередження, поки застосунок відкритий. Фонові push потребують хмарного моніторингу.</p><label for="threshold" class="threshold-label">Рівень попередження <b>'+threshold+'%</b></label><input id="threshold" type="range" min="5" max="90" step="5" value="'+threshold+'"></div><div class="history-panel"><span class="eyebrow">ПАРАМЕТРИ</span><h2>Джерела енергії</h2><p>BLUETTI EB3A: '+escapeHtml(eb3a.connected?'підключено':'не підключено')+'</p><p>Oukitel P2001E Plus: інтеграція захищеного Cloud API у розробці. Облікові дані виробника не вводяться в PWA.</p><p>На iPhone Safari не підтримує Web Bluetooth — для керування EB3A потрібна нативна збірка Xcode.</p><p>Платформа: '+(Capacitor.isNativePlatform()?'Нативна':'Браузерна')+'</p></div>';
+  body=heaterCard(heater,heaterAuthed,heaterConfigured,heaterPending,heaterError,escapeHtml,stamp)+'<div class="history-panel"><span class="eyebrow">ПОПЕРЕДЖЕННЯ</span><h2>Низький заряд</h2><p>Локальне попередження, поки застосунок відкритий. Фонові push потребують хмарного моніторингу.</p><label for="threshold" class="threshold-label">Рівень попередження <b>'+threshold+'%</b></label><input id="threshold" type="range" min="5" max="90" step="5" value="'+threshold+'"></div><div class="history-panel"><span class="eyebrow">ПАРАМЕТРИ</span><h2>Джерела енергії</h2><p>BLUETTI EB3A: '+escapeHtml(eb3a.connected?'підключено':'не підключено')+'</p><p>Oukitel P2001E Plus: інтеграція захищеного Cloud API у розробці. Облікові дані виробника не вводяться в PWA.</p><p>На iPhone Safari не підтримує Web Bluetooth — для керування EB3A потрібна нативна збірка Xcode.</p><p>Платформа: '+(Capacitor.isNativePlatform()?'Нативна':'Браузерна')+'</p></div>';
 
  }
  el!.innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">'+icon('bolt')+'</span><span>VOLTOS<small>ENERGY OS</small></span></div><nav class="desktop-nav">'+navButton('home','Головна','home')+navButton('devices','Пристрої','battery')+navButton('analytics','Графіки','chart')+navButton('settings','Параметри','settings')+'</nav><div class="side-footer">VOLTOS 0.2 · Native BLE Preview</div></aside><main class="main"><header class="topbar"><div class="mobile-brand"><span class="mark">'+icon('bolt')+'</span> VOLTOS</div><span class="preview-pill">'+(reading?'● BLUETOOTH LIVE':'● BLE PREVIEW')+'</span></header><div class="page-scroll"><section class="content"><p class="overline">VOLTOS / '+title().toUpperCase()+'</p><div class="heading"><div><h1>'+title()+'</h1><p>Контроль енергії в одному місці.</p></div></div>'+body+'</section></div><nav class="bottom-nav">'+navButton('home','Головна','home')+navButton('devices','Пристрої','battery')+navButton('analytics','Графіки','chart')+navButton('settings','Параметри','settings')+'</nav></main></div>';
@@ -109,6 +116,11 @@ function render(){
  document.getElementById('connect')?.addEventListener('click',()=>void connect());
  document.getElementById('refresh')?.addEventListener('click',()=>void refresh());
  document.getElementById('disconnect')?.addEventListener('click',()=>void disconnect());
+ document.getElementById('atlantic-login')?.addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget as HTMLFormElement;void heaterLogin(String(new FormData(f).get('password')||''));});
+ document.getElementById('heater-refresh')?.addEventListener('click',()=>void heaterRefresh());
+ document.querySelectorAll<HTMLButtonElement>('[data-heat-temp]').forEach(b=>b.onclick=()=>{if(heater?.targetTemperature!=null)void heaterControl('temperature',heater.targetTemperature+Number(b.dataset.heatTemp));});
+ document.querySelectorAll<HTMLButtonElement>('[data-heat-power]').forEach(b=>b.onclick=()=>void heaterControl('power',b.dataset.heatPower==='on'));
+ document.getElementById('heater-mode')?.addEventListener('change',e=>{const mode=(e.currentTarget as HTMLSelectElement).value;if(mode)void heaterControl('mode',mode);});
  document.querySelectorAll<HTMLButtonElement>('[data-control]').forEach(b=>b.onclick=()=>void runControl(b.dataset.control||'',Number(b.dataset.value)));
  document.querySelectorAll<HTMLSelectElement>('[data-control-select]').forEach(b=>b.onchange=()=>void runControl(b.dataset.controlSelect||'',Number(b.value)));
  document.querySelectorAll<HTMLButtonElement>('[data-hours]').forEach(b=>b.onclick=()=>{chartHours=Number(b.dataset.hours);render();});
@@ -170,3 +182,30 @@ function exportCsv(){
 if('serviceWorker' in navigator&&!Capacitor.isNativePlatform()){
  window.addEventListener('load',()=>{void navigator.serviceWorker.register('/sw.js').catch(()=>{});});
 }
+
+async function heaterRefresh(){
+ if(!heaterAuthed||heaterPending)return;
+ heaterPending=true;render();
+ try{heater=await atlantic.state();heaterError='';}
+ catch(e){heater=null;heaterError=e instanceof Error?e.message:'Сервер недоступний';}
+ finally{heaterPending=false;render();}
+}
+async function heaterLogin(password:string){
+ if(heaterPending)return;
+ heaterPending=true;heaterError='';render();
+ try{await atlantic.login(password);heaterAuthed=true;}
+ catch(e){heaterError=e instanceof Error?e.message:'Помилка входу';}
+ finally{heaterPending=false;render();}
+ if(heaterAuthed)void heaterRefresh();
+}
+async function heaterControl(action:'temperature'|'power'|'mode',value:number|boolean|string){
+ if(!heaterAuthed||!heater?.deviceOnline||heaterPending)return;
+ if(!window.confirm('Змінити '+action+' на '+value+'?')){render();return;}
+ heaterPending=true;heaterError='';render();
+ try{const r=await atlantic.control(action,value);if(!r.accepted)throw Error('Cozytouch не прийняв команду');heaterError='Команду прийнято, перевіряємо стан…';}
+ catch(e){heaterError=e instanceof Error?e.message:'Помилка керування';}
+ finally{heaterPending=false;render();}
+ void heaterRefresh();
+}
+void atlantic.session().then(s=>{heaterAuthed=s.authenticated;heaterConfigured=s.configured;render();if(heaterAuthed)void heaterRefresh()}).catch(()=>{heaterError='Серверний доступ недоступний';render()});
+setInterval(()=>{if(heaterAuthed&&!heaterPending&&document.visibilityState==='visible')void heaterRefresh()},45000);
