@@ -15,7 +15,7 @@ export function heaterCard(
  }else if(configured&&!authorized){
   actions='<form id="atlantic-login" class="heater-login"><input type="password" name="password" placeholder="Пароль доступу VOLTOS" autocomplete="current-password" required minlength="12"/><button type="submit" class="action primary">Увійти</button></form>';
  }else if(!configured){
-  actions='<p class="heater-helper">Захищений зв’язок Atlantic Home ще не налаштований. Після активації серверного шлюзу тут будуть температура, режими та керування.</p>';
+  actions='<p class="heater-helper">Захищений зв’язок Atlantic Home ще не налаштований. Після активації тут з’являться температура, режими й керування.</p><a class="heater-open" href="https://atlantic-home.vercel.app/" target="_blank" rel="noopener noreferrer">Відкрити чинний Atlantic Home ↗</a>';
  }else{
   actions='<button type="button" id="heater-refresh" class="action outline" '+(pending?'disabled':'')+'>Перевірити підключення</button>';
  }
