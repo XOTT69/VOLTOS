@@ -1,1 +1,46 @@
 :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eff6ff;background:#08111e;font-synthesis:none}*{box-sizing:border-box}body{margin:0;min-width:320px}button{font:inherit;cursor:pointer}svg{width:21px;height:21px;flex-shrink:0}.shell{display:flex;min-height:100vh}.sidebar{width:258px;position:sticky;top:0;height:100vh;padding:31px 20px;background:#0b1727;border-right:1px solid #1d3045;display:flex;flex-direction:column;gap:34px}.brand{display:flex;align-items:center;gap:11px;font-size:21px;font-weight:850;letter-spacing:.08em}.brand small{display:block;color:#7290ac;font-size:9px;letter-spacing:.25em;margin-top:2px}.mark{display:flex;justify-content:center;align-items:center;width:39px;height:39px;color:#021826;background:#6be3e8;border-radius:12px}.side-caption,.overline{font-size:11px;font-weight:800;color:#6e8aa6;letter-spacing:.15em}.desktop-nav{display:flex;flex-direction:column;gap:8px}.desktop-nav button{display:flex;gap:12px;align-items:center;border:0;text-align:left;padding:14px;border-radius:12px;background:transparent;color:#91a6ba}.desktop-nav button.active,.desktop-nav button:hover{background:#172d42;color:#77e6ed}.side-footer{margin-top:auto;color:#6e8296;font-size:12px;line-height:1.9}.main{flex:1;min-width:0}.topbar{height:76px;border-bottom:1px solid #1b2c3d;display:flex;justify-content:flex-end;align-items:center;padding:0 42px}.preview-pill,.demo-label,.status{font-size:11px;letter-spacing:.06em;font-weight:750;color:#7ce4eb;border:1px solid #285665;border-radius:40px;padding:9px 12px;background:#113341}.mobile-brand{display:none}.content{max-width:1300px;margin:auto;padding:36px 42px 100px}.heading{display:flex;align-items:end;justify-content:space-between;gap:15px;margin:19px 0 32px}h1{font-size:clamp(28px,3vw,42px);letter-spacing:-.045em;margin:0}h2{margin:0;font-size:19px}h3{margin:3px 0 20px;font-size:21px;letter-spacing:-.02em}.heading p,.summary p{color:#889cb1;margin:9px 0 0;font-size:14px}.summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.summary,.device-card,.empty-state{border:1px solid #20354b;background:linear-gradient(150deg,#132439,#101d30);border-radius:18px;padding:23px}.summary>span{font-size:11px;font-weight:750;letter-spacing:.12em;color:#8da5bd}.summary strong{display:block;font-size:36px;letter-spacing:-.04em;margin-top:16px}.summary strong small{font-size:15px;color:#9fb5cc;font-weight:500}.section-title{display:flex;justify-content:space-between;align-items:center;margin:34px 0 17px}.section-title span{font-size:12px;color:#8297aa}.device-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.device-top{display:flex;justify-content:space-between;align-items:center}.device-icon{width:41px;height:41px;border-radius:12px;background:#183b49;color:#6fe5e8;display:flex;align-items:center;justify-content:center}.status{font-size:10px;padding:5px 9px}.eyebrow{margin:20px 0 0;color:#7eb7c7;font-size:11px;font-weight:800;letter-spacing:.16em}.charge-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:13px}.charge-row strong{font-size:40px;letter-spacing:-.045em}.charge-row span{font-size:12px;color:#86a0b5}.track{width:100%;height:7px;border-radius:20px;background:#273b4c;overflow:hidden}.track>div{background:linear-gradient(90deg,#34bbbe,#6ee6be);height:100%;border-radius:20px}.metrics{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #293c4e;padding:22px 0;color:#8da7bd;font-size:12px}.metrics b{display:block;color:#f1f8ff;font-size:17px;margin-top:6px}.runtime{padding-top:18px;color:#a6b7c9;font-size:13px}.runtime b{color:#b9f5ee}.notice{border:1px solid #3e3d38;background:#24271f;border-radius:16px;padding:17px 20px;margin-top:26px;color:#f5dca3}.notice p{color:#bea985;font-size:13px;line-height:1.65;margin:6px 0 0}.empty-state{padding:50px;text-align:center}.empty-state svg{width:42px;height:42px;color:#70b6c7}.empty-state h2{margin-top:20px}.empty-state p{color:#90a4b9;line-height:1.6}.bottom-nav{display:none}@media(max-width:900px){.sidebar{width:210px}.content{padding:27px 24px 90px}.topbar{padding:0 24px}.summary-grid{gap:10px}.summary{padding:17px}.summary strong{font-size:29px}}@media(max-width:650px){.sidebar{display:none}.topbar{height:65px;padding:0 19px;justify-content:space-between}.mobile-brand{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:850;letter-spacing:.08em}.mobile-brand .mark{height:32px;width:32px;border-radius:9px}.mobile-brand svg{height:18px;width:18px}.preview-pill{font-size:9px;padding:7px}.content{padding:24px 17px 115px}.heading{margin:12px 0 23px;align-items:start}.heading p{font-size:12px}.demo-label{display:none}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.summary-grid .summary:last-child{grid-column:span 2}.summary{padding:16px}.summary strong{font-size:27px;margin-top:12px}.summary strong small{font-size:12px}.summary>span{font-size:10px}.section-title{margin-top:29px}.section-title span{font-size:11px}.device-grid{grid-template-columns:1fr;gap:13px}.device-card{padding:20px}.bottom-nav{position:fixed;display:flex;justify-content:space-around;bottom:0;left:0;right:0;background:#0c1a2bf2;border-top:1px solid #273a4c;padding:12px 6px calc(12px + env(safe-area-inset-bottom));z-index:5;backdrop-filter:blur(16px)}.bottom-nav button{border:0;background:transparent;display:flex;flex-direction:column;gap:5px;align-items:center;color:#8ba2b8;min-width:65px;font-size:10px}.bottom-nav button.active{color:#6be4e8}.bottom-nav svg{height:21px;width:21px}}
+/* VOLTOS 0.2 — stable iOS viewport and native safe areas */
+html,body,#app{height:100%;min-height:0;overflow:hidden}
+body{overscroll-behavior:none}
+.shell{height:100%;height:100dvh;min-height:0;overflow:hidden}
+.main{display:flex;flex-direction:column;min-height:0;height:100%;height:100dvh;overflow:hidden}
+.topbar{flex-shrink:0}
+.page-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.content{padding-bottom:35px}
+.connection-panel,.history-panel{background:linear-gradient(135deg,#173046,#101f32);border:1px solid #285068;border-radius:22px;padding:22px;margin-bottom:18px}
+.connection-panel{display:flex;justify-content:space-between;align-items:center;gap:20px}
+.connection-panel h2,.history-panel h2{margin:10px 0;font-size:21px}
+.connect-description p,.history-panel p{color:#9bb2c5;font-size:13px;line-height:1.5}
+.connection-state{color:#70e3c5!important;font-weight:650}
+.measured{color:#86c3dd!important}
+.error-note{color:#ffb4b4!important;overflow-wrap:anywhere}
+.connect-actions{display:flex;flex-direction:column;gap:9px;flex-shrink:0}
+.action{display:flex;gap:9px;align-items:center;justify-content:center;border-radius:12px;padding:13px 18px;font-weight:700;border:1px solid transparent}
+.action svg{width:19px;height:19px}
+.action.primary{background:#61e3e7;color:#06222a}
+.action.outline{background:#1e354a;color:#d2e9ff;border-color:#35546a}
+.action:disabled{opacity:.45}
+.status.live{background:#143b33;border-color:#2d7862;color:#87ffd6}
+.history-bars{display:flex;align-items:flex-end;gap:4px;height:155px;padding:10px;border:1px solid #294457;border-radius:12px;margin-top:15px;background:#0c1b2b}
+.history-bar{height:100%;flex:1;min-width:2px;display:flex;align-items:flex-end}
+.history-bar i{display:block;width:100%;min-height:3px;background:#60d8e3;border-radius:3px 3px 0 0}
+.empty-inline{padding:30px 12px;text-align:center;color:#9bb2c5}
+@media(max-width:650px){
+  .main{padding:0}
+  .topbar{height:auto;min-height:68px;padding:calc(12px + env(safe-area-inset-top,0px)) 17px 12px;position:relative;z-index:1}
+  .page-scroll{padding:0}
+  .content{padding:23px 16px 22px}
+  .bottom-nav{position:relative;inset:auto;flex-shrink:0;z-index:20;min-height:64px;padding:10px 6px calc(10px + env(safe-area-inset-bottom,0px));background:#0d1b2c;border-top:1px solid #29465c;box-shadow:0 -7px 28px #0005}
+  .bottom-nav button{gap:6px}
+  .heading{margin:11px 0 22px}
+  .heading h1{font-size:clamp(26px,8vw,36px)}
+  .summary-grid .summary{min-width:0}
+  .summary strong{font-size:clamp(24px,7vw,31px)}
+  .summary strong small{font-size:11px}
+  .connection-panel{display:block;padding:18px}
+  .connect-actions{margin-top:18px}
+  .connect-actions .action{width:100%;min-height:45px}
+  .device-card{min-width:0}
+  .section-title{gap:8px}
+  .section-title h2{font-size:18px}
+}
