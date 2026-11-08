@@ -1,71 +1,54 @@
-# VOLTOS ⚡ Energy OS
+# VOLTOS ⚡ — Energy Operating System
 
-A local-first multi-brand home energy platform. **VOLTOS 0.5 is an early development preview, not a commercial or safety-certified release.**
+**VOLTOS 1.0 — персональна iPhone-збірка для реального тестування обладнання.**
 
-## Live PWA preview
+Це один застосунок для BLUETTI EB3A, Oukitel P2001E Plus та Atlantic Altis Eco Boost. Він працює як PWA, а через Capacitor/Xcode — як встановлена iOS-програма з нативним Bluetooth.
 
-https://voltos-belli.vercel.app
+**PWA:** https://voltos-belli.vercel.app
 
-PWA is for reviewing design, interactions and preview charts. iPhone Safari does not provide Web Bluetooth; actual EB3A BLE telemetry and controls must be tested using the iOS app created by Capacitor/Xcode. Do not mistake demo energy charts for physical measurements.
+## Працює в цій версії
 
-## What works now
+- Нова головна з реальним зведенням по підключених джерелах, без демонстраційного заряду чи штучних графіків.
+- Стани пристроїв, їхні картки й коректна окрема вкладка «Пристрої».
+- BLUETTI EB3A: нативний BLE, читання заряду й потужності; ручне керування AC, DC, ECO, LED, Power Lifting та режимами заряджання через підтверджені регістри.
+- Oukitel P2001E Plus: вхід через акаунт виробника, список своїх станцій, cloud-телеметрія, обмежені команди AC/DC/USB із перевіркою Cloud-показників.
+- Atlantic Altis Eco Boost: вхід за паролем наявного Atlantic Home, температура, режими, цільова температура і команди через Cozytouch.
+- Аналітика: окремі часові ряди EB3A, Oukitel Cloud Snapshot та температур Atlantic, 1 година / доба / 7 днів, локальна історія до 30 днів, експорт CSV.
+- Параметри: попередження про низький заряд EB3A під час активного застосунку, інформація про підключення та очищення локальної історії.
+- Новий iOS-інтерфейс, адаптивна нижня навігація, власна іконка застосунку.
 
-- Native BLUETTI EB3A Bluetooth connection on a physical iPhone, via `@capacitor-community/bluetooth-le`
-- Read-only battery charge, AC/DC input and output power, AC/DC outlet state, and measurement timestamp
-- Manual refresh and polling while the app is visible
-- 30-day local telemetry samples recorded once per minute while open
-- Analytics with 1h / 24h / 7-day filters, output/input/SOC, CSV export, runtime estimate
-- EB3A AC/DC, LED, ECO, Power Lifting and charging mode control with explicit confirmation and Modbus readback (requires hardware validation before routine use)
-- Local charge threshold warning while the app is open
-- Premium dashboard with energy flow, compact mobile cards, responsive bottom navigation, and explicitly-labeled design preview charts
-- Atlantic Altis Eco Boost connected through existing Atlantic Home access password, with secure server-to-server Cozytouch gateway; see [Atlantic](docs/ATLANTIC.md). Server-only secrets are already provisioned in the maintainer's Vercel deployment.
-- Oukitel P2001E Plus cloud login in VOLTOS using existing manufacturer email/password, device discovery, charge and power readouts via conservative Cloud Shadow parsing; see [Oukitel](docs/OUKITEL.md).
-- PWA browser sessions via secure HttpOnly cookies; Capacitor/iOS sessions via native HTTPS and memory-only bearer credentials.
-- Separate demo cards when no device is connected
-- Stable tab bar and independent scroll area with safe-area handling in iOS
+## Встановлення на iPhone
 
-**Not yet implemented:** production multi-tenant customer accounts, validated Oukitel control commands, automatic persistent native sessions, remote/cloud accounts, always-on background BLE monitoring, device automations, remote push, billing or iOS widgets. Existing [OUKITEL Home](https://github.com/XOTT69/oukite) is separate and must keep running independently.
-
-## Run on iPhone (Xcode)
-
-Requires Node 22+, macOS, Xcode with iOS SDK, a physical iPhone and Apple Account for signing.
-
-```bash
-git clone https://github.com/XOTT69/VOLTOS.git
-cd VOLTOS
-npm install
-npm run build
-npx cap add ios
-npm run ios
-```
-
-If `ios/` already exists **do not run** `npx cap add ios` again.
-
-### Updating an existing checkout
+Якщо VOLTOS вже є на Mac:
 
 ```bash
 cd ~/VOLTOS
-git pull
+git pull origin main
 npm install
 npm run ios
 ```
 
-The `npm run ios` script rebuilds web assets, syncs Capacitor plugins, and adds the native `NSBluetoothAlwaysUsageDescription` iOS privacy message to `ios/App/App/Info.plist` if missing, then opens Xcode. In Xcode select your development team, physical iPhone and Run (⌘R). Make sure Bluetooth is enabled. iOS will request Bluetooth access on first connection.
+Після відкриття Xcode: **App → Signing & Capabilities → Team**, вибрати iPhone, **Product → Clean Build Folder** (після оновлення) та **Run (⌘R)**. Збережені локальні дані не потрібно видаляти разом із застосунком.
 
-If Xcode was already open, close and reopen the workspace after the plugin sync to refresh packages. The plugin needs an updated native Xcode build; a web-only refresh cannot add native BLE.
+Повний [план встановлення та тестування](docs/IOS-RELEASE.md).
 
-### Troubleshooting
+Для чистого встановлення спочатку зробіть `git clone`, `npm install`, `npx cap add ios`, потім `npm run ios`.
 
-- If the BLE scan shows no station, ensure EB3A is powered on, Bluetooth is enabled and other apps are not currently holding its BLE connection.
-- In Settings → VOLTOS, verify Bluetooth permission is granted.
-- BLE requires a physical phone: the iOS simulator cannot scan for real BLE peripherals.
-- If a read fails, app reports the error; old values must not be interpreted as current values.
-- No background BLE telemetry is guaranteed after app closes or iOS suspends it.
+## Обмеження
 
-The EB3A's register map is adapted from the user's [Stats](https://github.com/XOTT69/Stats) project. The iOS preview includes allowlisted BLE write commands for AC/DC, LED, ECO and charge modes, each with manual confirmation and register readback. Hardware validation of every command is still required before routine use.
+Це **реальна тестова збірка**, а не підтверджений комерційний реліз. Потрібно перевірити фактичні команди на відповідних прошивках і пристроях. Безпека критичних навантажень завжди має пріоритет.
 
-## Architecture
+- Oukitel Cloud Snapshot не гарантує, що вимірювання щойно зроблене пристроєм.
+- Після закриття iOS може припинити BLE-з'єднання та локальний збір історії. Цілодобове збирання потребує постійно працюючого шлюзу.
+- Доступ до Atlantic Home поки приватно прив'язаний до однієї інсталяції, не масштабований на сторонніх користувачів.
+- Нативні cloud-сесії поки живуть у пам'яті, після повторного запуску може знадобитися вхід.
+- Фонові push, Home Screen віджети, складні автоматизації та комерційні акаунти/підписки ще не входять у цю збірку.
+- iPhone Safari PWA не підтримує прямий Web Bluetooth: EB3A треба підключати у Xcode-версії.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the multi-brand roadmap.
+## Інтеграції та архітектура
 
-VOLTOS is not affiliated with OUKITEL or BLUETTI.
+- [Atlantic Home](docs/ATLANTIC.md)
+- [Oukitel Cloud](docs/OUKITEL.md)
+- [Архітектура](docs/ARCHITECTURE.md)
+
+VOLTOS не афілійований з Oukitel, BLUETTI або Atlantic.
