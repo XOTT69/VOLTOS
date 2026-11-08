@@ -77,7 +77,7 @@ function toast(message:string,kind:'info'|'error'|'success'='info'){
 const lastBle=()=>state.ble?.measuredAt??null;
 const bleFresh=()=>Boolean(state.ble&&!state.bleError&&Date.now()-new Date(state.ble.measuredAt).getTime()<45000);
 const powerDevices=()=>[state.ble?.soc,state.oukitel?.soc].filter((x):x is number=>x!==null&&x!==undefined);
-const connectedCount=()=>Number(Boolean(state.ble))+Number(Boolean(state.oukitel))+Number(Boolean(state.atlantic?.deviceOnline));
+const connectedCount=()=>Number(bleFresh())+Number(Boolean(state.oukitel?.device.online))+Number(Boolean(state.atlantic?.deviceOnline));
 function runtime(soc:number,watts:number,capacity:number){
  if(watts<=2)return 'Без навантаження';
  const m=Math.round(capacity*soc/100*.84/watts*60);
@@ -93,12 +93,14 @@ function capture(){
 }
 function overview(){
  const batteries=powerDevices();
- const avg=batteries.length?Math.round(batteries.reduce((a,b)=>a+b,0)/batteries.length):null;
+ const storedWh=(state.ble?268.8*state.ble.soc/100:0)+(state.oukitel?.soc!=null?2048*state.oukitel.soc/100:0);
+ const totalWh=(state.ble?268.8:0)+(state.oukitel?.soc!=null?2048:0);
+ const avg=totalWh?Math.round(storedWh/totalWh*100):null;
  const connected=connectedCount();
  const load=(bleFresh()?state.ble?.outputWatts??0:0)+(state.oukitel?.outputWatts??0);
  const input=(bleFresh()?state.ble?.inputWatts??0:0)+(state.oukitel?.inputWatts??0);
  return '<section class="overview"><div class="overview-top"><div><div class="section-eyebrow">ENERGY OVERVIEW</div><h2>Твоя енергія.<br/><span>Під контролем.</span></h2><p>Живлення, клімат і автономність в одній системі.</p></div><span class="online-pill '+(connected?'is-online':'')+'">'+(connected?'● '+connected+' активні':'○ Очікуємо пристрої')+'</span></div>'+
- '<div class="overview-visual"><div class="orb" style="--percent:'+(avg??0)+'"><div class="orb-inner"><small>СЕРЕДНІЙ ЗАРЯД</small><strong>'+(avg===null?'—':avg+'%')+'</strong><span>'+(batteries.length?batteries.length+' батарей':'Немає даних')+'</span></div></div>'+
+ '<div class="overview-visual"><div class="orb" style="--percent:'+(avg??0)+'"><div class="orb-inner"><small>РІВЕНЬ РЕЗЕРВУ</small><strong>'+(avg===null?'—':avg+'%')+'</strong><span>'+(batteries.length?batteries.length+' батарей':'Немає даних')+'</span></div></div>'+
  '<div class="flow-metrics"><div><span class="flow-icon in">↓</span><span><small>Надходить</small><strong>'+(batteries.length?nf(input):'—')+' <em>Вт</em></strong></span></div><div><span class="flow-icon out">↗</span><span><small>Споживання</small><strong>'+(batteries.length?nf(load):'—')+' <em>Вт</em></strong></span></div></div></div>'+
  '<div class="overview-bottom"><span>'+icon('shield')+' '+(connected?'Показники з підключених джерел':'Підключи перший пристрій')+'</span><button data-nav="devices">Пристрої '+icon('chevron')+'</button></div></section>';
 }
