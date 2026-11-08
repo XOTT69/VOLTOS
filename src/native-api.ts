@@ -5,8 +5,9 @@ export type Integration='atlantic'|'oukitel';
 const tokens:Partial<Record<Integration,string>>={};
 export function hasNativeToken(which:Integration){return Boolean(tokens[which]);}
 export function clearNativeToken(which:Integration){delete tokens[which];}
-export async function endpoint<T>(which:Integration,action:string,method:'GET'|'POST'='GET',payload?:unknown):Promise<T>{
- const path='/api/'+(which==='atlantic'?'bridge':'oukitel')+'?action='+encodeURIComponent(action);
+export async function endpoint<T>(which:Integration,action:string,method:'GET'|'POST'='GET',payload?:unknown,params?:Record<string,string>):Promise<T>{
+ const qs=new URLSearchParams({action,...(params||{})});
+ const path='/api/'+(which==='atlantic'?'bridge':'oukitel')+'?'+qs.toString();
  if(Capacitor.isNativePlatform()){
   const response=await CapacitorHttp.request({
    url:BACKEND+path,method,
