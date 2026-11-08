@@ -105,3 +105,9 @@ body{background:#08121f;color:var(--text)}
  .preview-pill{font-size:8px}
 }
 @media(max-width:365px){.hero-inner{gap:10px}.charge-ring{width:116px;height:116px}.ring-center{width:99px;height:99px}.hero-copy h2{font-size:18px}}
+
+.preview-chart{margin-top:14px;padding:14px;border:1px dashed #3a6575;border-radius:16px;background:linear-gradient(130deg,#102838,#0e2330)}
+.preview-chart>span{display:block;color:#6cc9cd;font-size:10px;font-weight:800;letter-spacing:.12em}
+.preview-chart .history-bars{border:0;background:transparent;margin-top:0}
+.threshold-label{display:flex;justify-content:space-between;color:#cce0ee;font-size:13px;margin:18px 0 8px}
+#threshold{width:100%;accent-color:#66e2e1}
