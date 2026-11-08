@@ -155,6 +155,16 @@ function climateTile(){
  (state.atlanticError?'<p class="inline-error">'+h(state.atlanticError)+'</p>':'')+
  '<div class="tile-last">Cozytouch '+(d?'· '+since(d.measuredAt):'· очікування з’єднання')+'</div></article>';
 }
+function homeDevices(){
+ const bd=state.ble,od=state.oukitel,ad=state.atlantic;
+ const rows=[
+  {icon:'bluetooth',style:'bluetti',name:'BLUETTI EB3A',sub:bd?(bd.soc+'% · '+nf(bd.outputWatts)+' Вт'):'Потрібно підключити',status:bleFresh()?'Онлайн':'Не підключено'},
+  {icon:'cloud',style:'oukitel',name:'Oukitel P2001E Plus',sub:od?(nf(od.soc)+'% · '+nf(od.outputWatts)+' Вт'):'Потрібно підключити',status:od?'Cloud дані':'Не підключено'},
+  {icon:'sun',style:'atlantic',name:'Atlantic Altis Eco Boost',sub:ad?.roomTemperature!=null?(ad.roomTemperature+'°C · '+(ad.mode||'Режим не вказано')):'Потрібно підключити',status:ad?.deviceOnline?'Онлайн':'Не підключено'}
+ ];
+ return '<section class="home-devices"><div class="grid-head"><div><div class="section-eyebrow">CONNECTED EQUIPMENT</div><h2>Пристрої</h2></div><button class="text-action" data-nav="devices">Усі пристрої '+icon('chevron')+'</button></div><div class="home-device-grid">'+rows.map(x=>
+  '<button class="home-device" data-nav="devices"><span class="tile-icon '+x.style+'">'+icon(x.icon)+'</span><span class="home-device-info"><strong>'+h(x.name)+'</strong><small>'+h(x.sub)+'</small></span><span class="home-device-status">'+h(x.status)+'</span>'+icon('chevron')+'</button>').join('')+'</div></section>';
+}
 function deviceGrid(){
  return '<div class="grid-head"><div><div class="section-eyebrow">SMART DEVICES</div><h2>Мої пристрої</h2></div><span>'+connectedCount()+' підключено</span></div><section class="device-grid-modern">'+eb3aTile()+oukitelTile()+climateTile()+'</section>';
 }
@@ -196,7 +206,7 @@ function render(){
  const headings:Record<Tab,[string,string]>={home:['Головна','Повний огляд твоєї системи'],devices:['Пристрої','Підключення, показники та керування'],analytics:['Аналітика','Реальна історія енергоспоживання'],settings:['Параметри','Налаштування VOLTOS']};
  const [title,subtitle]=headings[state.tab];
  let body='';
- if(state.tab==='home')body=overview()+summary()+deviceGrid();
+ if(state.tab==='home')body=overview()+summary()+homeDevices();
  else if(state.tab==='devices')body=deviceGrid()+controls();
  else if(state.tab==='analytics')body=chart();
  else body=settingsPage();
