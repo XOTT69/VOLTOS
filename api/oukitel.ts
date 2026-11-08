@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 
 const BASE='https://iot-api.quecteleu.com';
 const USER_DOMAIN='E.SP.4294967410';
@@ -41,7 +41,7 @@ function headers(res:VercelResponse){
  res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
 }
 function commonHeaders(token?:string){
- return {'X-Q-Language':'en','quec-random-url':randomBytes(16).toString('hex'),
+ return {'X-Q-Language':'en','quec-random-url':randomUUID(),
   'app-info':JSON.stringify({userDomain:USER_DOMAIN}),
   ...(token?{Authorization:token}:{})};
 }
@@ -58,7 +58,8 @@ async function provider(path:string,token?:string,body?:URLSearchParams){
 async function login(email:string,password:string){
  const appSecret=process.env.OUKITEL_APP_SECRET;
  if(!appSecret)throw Error('Інтеграція Oukitel ще не налаштована');
- const random=randomBytes(12).toString('base64url').slice(0,16);
+ const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+ const random=Array.from(randomBytes(16),byte=>alphabet[byte%alphabet.length]).join('');
  const md5=createHash('md5').update(random).digest('hex').toUpperCase();
  const aesKey=md5.slice(8,24), iv=aesKey.slice(8)+aesKey.slice(0,8);
  const cipher=createCipheriv('aes-128-cbc',Buffer.from(aesKey),Buffer.from(iv));
