@@ -1,14 +1,14 @@
 {
   "name": "voltos",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "ios": "npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && npx cap open ios",
-    "ios:sync": "npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs"
+    "ios": "npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && node scripts/ios-brand.mjs && npx cap open ios",
+    "ios:sync": "npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && node scripts/ios-brand.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.0.0",
@@ -19,6 +19,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
     "typescript": "~5.9.3",
-    "vite": "^7.3.0"
+    "vite": "^7.3.0",
+    "sharp": "^0.34.4"
   }
 }
