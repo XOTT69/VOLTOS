@@ -1,3 +1,4 @@
+import { endpoint } from './native-api';
 export interface OukitelDevice {
  productKey:string;deviceKey:string;deviceName:string;productName:string;online:boolean;
 }
@@ -6,20 +7,13 @@ export interface OukitelReading {
  temperatureC:number|null; acOn:boolean|null;dcOn:boolean|null;usbOn:boolean|null;
  cloudCheckedAt:string; source:'quectel-cloud-shadow'; freshness:'unknown';
 }
-async function request(path:string,init?:RequestInit):Promise<unknown>{
- const r=await fetch('/api/oukitel?action='+path,{...init,cache:'no-store',credentials:'same-origin'});
- const j=await r.json().catch(()=>({error:'Некоректна відповідь'}));
- if(!r.ok)throw Error(typeof j?.error==='string'?j.error:'Помилка Oukitel '+r.status);
- return j;
-}
-const post=(body:unknown)=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} as const);
 export const oukitel={
- session:async()=>request('session') as Promise<{connected:boolean}>,
- login:async(email:string,password:string)=>request('login',post({email,password})) as Promise<{connected:boolean;devices:OukitelDevice[]}>,
- logout:async()=>request('logout',post({})) as Promise<{connected:boolean}>,
- devices:async()=>request('devices') as Promise<{devices:OukitelDevice[]}>,
+ session:async()=>endpoint('oukitel','session') as Promise<{connected:boolean}>,
+ login:async(email:string,password:string)=>endpoint('oukitel','login','POST',{email,password}) as Promise<{connected:boolean;devices:OukitelDevice[]}>,
+ logout:async()=>endpoint('oukitel','logout','POST',{}) as Promise<{connected:boolean}>,
+ devices:async()=>endpoint('oukitel','devices') as Promise<{devices:OukitelDevice[]}>,
  state:async(d:OukitelDevice):Promise<OukitelReading>=>{
-  const raw=await request('state&pk='+encodeURIComponent(d.productKey)+'&dk='+encodeURIComponent(d.deviceKey)) as {
+  const raw=await endpoint('oukitel','state','GET',undefined,{pk:d.productKey,dk:d.deviceKey}) as {
    raw?:{data?:{customizeTslInfo?:Array<{abId:string|number;resourceValce:unknown}>};customizeTslInfo?:Array<{abId:string|number;resourceValce:unknown}>};
    cloudCheckedAt:string;device:OukitelDevice
   };
