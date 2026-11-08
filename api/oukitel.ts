@@ -94,6 +94,29 @@ async function devices(token:string):Promise<Device[]>{
   online:x.online===true||Number(x.online)===1
  })).filter((x:Device)=>safeId(x.productKey)&&safeId(x.deviceKey));
 }
+const OUTPUTS={ac:{code:'ac_switch',id:'43'},usb:{code:'usb_switch',id:'44'},dc:{code:'dc_switch',id:'46'}} as const;
+function outputState(snapshot:unknown,id:string):boolean|null{
+ const raw=snapshot as {data?:{customizeTslInfo?:Array<{abId:string|number;resourceValce:unknown}>};customizeTslInfo?:Array<{abId:string|number;resourceValce:unknown}>};
+ const attrs=raw?.data?.customizeTslInfo??raw?.customizeTslInfo??[];
+ const x=attrs.find(a=>String(a.abId)===id)?.resourceValce;
+ if(['1','true','on'].includes(String(x).toLowerCase()))return true;
+ if(['0','false','off'].includes(String(x).toLowerCase()))return false;
+ return null;
+}
+async function sendCommand(token:string,device:Device,code:string,on:boolean){
+ const payload={
+  data:JSON.stringify([{[code]:String(on)}]),
+  deviceList:[{productKey:device.productKey,deviceKey:device.deviceKey,gatewayDeviceKey:'',gatewayProductKey:''}],
+  type:2,cacheTime:86400,isCache:2,isCover:2,dataFormat:2
+ };
+ const response=await fetch(BASE+'/v2/binding/enduserapi/batchControlDevice',{
+  method:'POST',headers:{...commonHeaders(token),'content-type':'application/json'},
+  body:JSON.stringify(payload),signal:AbortSignal.timeout(12000),cache:'no-store'
+ });
+ const json=await response.json().catch(()=>null);
+ if(!response.ok||!json||![0,200].includes(Number(json.code??0)))throw Error('Oukitel Cloud не прийняв команду');
+}
+
 export default async function handler(req:VercelRequest,res:VercelResponse){
  headers(res);
  const action=Array.isArray(req.query.action)?req.query.action[0]:req.query.action;
@@ -121,6 +144,32 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
  if(!token)return res.status(401).json({error:'Підключіть акаунт Oukitel у VOLTOS'});
  try{
   if(action==='devices'&&req.method==='GET')return res.status(200).json({devices:await devices(token)});
+  if(action==='control'&&req.method==='POST'){
+   const body=req.body as {pk?:unknown;dk?:unknown;port?:unknown;on?:unknown}|undefined;
+   if(!body||!safeId(body.pk)||!safeId(body.dk)||typeof body.on!=='boolean'||
+       typeof body.port!=='string'||!Object.hasOwn(OUTPUTS,body.port))
+    return res.status(400).json({error:'Невірні параметри керування'});
+   const port=body.port as keyof typeof OUTPUTS,def=OUTPUTS[port];
+   const list=await devices(token);
+   const owned=list.find(d=>d.productKey===body.pk&&d.deviceKey===body.dk);
+   if(!owned)return res.status(403).json({error:'Пристрій не належить цьому акаунту'});
+   if(!owned.online)return res.status(409).json({error:'Станція офлайн. Команду заблоковано'});
+   const path='/v2/binding/enduserapi/getDeviceBusinessAttributes?pk='+encodeURIComponent(owned.productKey)+'&dk='+encodeURIComponent(owned.deviceKey);
+   const before=await provider(path,token);
+   const previous=outputState(before,def.id);
+   if(previous===null)return res.status(409).json({error:'Стан виходу невідомий. Команду не надіслано'});
+   if(previous===body.on)return res.status(200).json({accepted:true,confirmed:false,on:previous,port,message:'Cloud уже відображає цей стан'});
+   await sendCommand(token,owned,def.code,body.on);
+   let after=previous;
+   for(let attempt=0;attempt<2;attempt++){
+    await new Promise(resolve=>setTimeout(resolve,1100));
+    const r=outputState(await provider(path,token),def.id);
+    if(r!==null)after=r;
+    if(after===body.on)break;
+   }
+   return res.status(200).json({accepted:true,confirmed:after===body.on,on:after,port,
+    message:after===body.on?'Cloud повідомляє запитаний стан':'Cloud прийняв команду, але виконання ще не підтверджено'});
+  }
   if(action==='state'&&req.method==='GET'){
    const pk=req.query.pk,dk=req.query.dk;
    if(!safeId(pk)||!safeId(dk))return res.status(400).json({error:'Не обрано станцію'});
