@@ -8,8 +8,8 @@ import { heaterCard } from './heater-ui';
 type Tab='home'|'devices'|'analytics'|'settings';
 type Metric='output'|'input'|'soc'|'room'|'target';
 type Point={at:number;soc:number;input:number;output:number};
-type CloudPoint={at:number;soc:number;input:number;output:number};
-type ClimatePoint={at:number;room:number;target:number};
+type CloudPoint={at:number;soc:number|null;input:number|null;output:number|null};
+type ClimatePoint={at:number;room:number|null;target:number|null};
 type ChartSource='bluetti'|'oukitel'|'atlantic';
 const ble=new Eb3aBle();
 const NATIVE=Capacitor.isNativePlatform();
@@ -205,10 +205,10 @@ function chart(){
  const value=(p:Point|CloudPoint|ClimatePoint):number=>{
   if(source==='atlantic'){
    const v=p as ClimatePoint;
-   return (state.metric==='target'?v.target:v.room);
+   return (state.metric==='target'?v.target:v.room)??NaN;
   }
   const v=p as Point;
-  return state.metric==='soc'?v.soc:state.metric==='input'?v.input:v.output;
+  return (state.metric==='soc'?v.soc:state.metric==='input'?v.input:v.output)??NaN;
  };
  const chosen=records.filter(p=>Number.isFinite(value(p))).slice(-300);
  const values=chosen.map(value);
@@ -355,7 +355,7 @@ async function refreshOukitel(){
   state.oukitel=await oukitel.state(d);state.oukitelError='';
   const reading=state.oukitel;
   if(reading.soc!==null||reading.inputWatts!==null||reading.outputWatts!==null)
-   appendSample(cloudPoints,{at:Date.now(),soc:reading.soc??0,input:reading.inputWatts??0,output:reading.outputWatts??0},cloudLogKey);
+   appendSample(cloudPoints,{at:Date.now(),soc:reading.soc,input:reading.inputWatts,output:reading.outputWatts},cloudLogKey);
  }
  catch(e){state.oukitelError=e instanceof Error?e.message:String(e);state.oukitel=null}
  finally{state.oukitelBusy=false;render()}
@@ -396,7 +396,7 @@ async function refreshAtlantic(){
   state.atlantic=await atlantic.state();state.atlanticError='';
   const d=state.atlantic;
   if(d.roomTemperature!==null||d.targetTemperature!==null)
-   appendSample(climatePoints,{at:Date.now(),room:d.roomTemperature??NaN,target:d.targetTemperature??NaN},climateLogKey);
+   appendSample(climatePoints,{at:Date.now(),room:d.roomTemperature,target:d.targetTemperature},climateLogKey);
  }
  catch(e){state.atlantic=null;state.atlanticError=e instanceof Error?e.message:String(e)}
  finally{state.atlanticBusy=false;render()}
@@ -418,7 +418,7 @@ function exportCsv(){
  const lines=source==='atlantic'?
   ['date,room_c,target_c',...climatePoints.map(p=>[new Date(p.at).toISOString(),p.room??'',p.target??''].join(','))]:
   source==='oukitel'?
-  ['date,soc,input_w,output_w,source',...cloudPoints.map(p=>[new Date(p.at).toISOString(),p.soc,p.input,p.output,'cloud_snapshot'].join(','))]:
+  ['date,soc,input_w,output_w,source',...cloudPoints.map(p=>[new Date(p.at).toISOString(),p.soc??'',p.input??'',p.output??'','cloud_snapshot'].join(','))]:
   ['date,soc,input_w,output_w',...points.map(p=>[new Date(p.at).toISOString(),p.soc,p.input,p.output].join(','))];
  const a=document.createElement('a');
  const url=URL.createObjectURL(new Blob([lines.join('\\n')],{type:'text/csv;charset=utf-8'}));
