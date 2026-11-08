@@ -73,3 +73,7 @@ svg{width:21px;height:21px;flex-shrink:0}
 .home-device>svg{width:16px;height:16px;color:#718e9d}
 @media(min-width:1000px){.home-device-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.home-device{padding:16px 14px}.home-device-status{display:none}}
 @media(max-width:450px){.home-device{padding:13px 12px;gap:10px}.home-device-status{font-size:9px}.home-device-info strong{font-size:12px}}
+
+.source-switch{display:flex;gap:8px;flex-wrap:wrap}
+.source-switch button{letter-spacing:.06em;font-size:10px;padding:10px 12px}
+.source-switch button.selected{background:#246057;border-color:#4f9e8e}
