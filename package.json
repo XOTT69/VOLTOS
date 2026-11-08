@@ -12,7 +12,8 @@
   "dependencies": {
     "@capacitor/core": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
-    "lucide": "^0.468.0"
+    "lucide": "^0.468.0",
+    "@capacitor-community/bluetooth-le": "^8.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
