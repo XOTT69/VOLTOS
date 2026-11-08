@@ -63,10 +63,13 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
  const op=Array.isArray(req.query.action)?req.query.action[0]:req.query.action;
  if(op==='login'&&req.method==='POST'){
   if(!sameOrigin(req))return res.status(403).json({error:'Недозволений Origin'});
-  const pwd=process.env.VOLTOS_APP_PASSWORD??'', secret=sessionSecret();
-  if(pwd.length<12||!secret)return res.status(503).json({error:'Доступ VOLTOS не налаштований'});
+  const secret=sessionSecret();
+  if(!secret)return res.status(503).json({error:'Сервіс авторизації не налаштований'});
   const supplied=typeof req.body?.password==='string'?req.body.password:'';
-  if(supplied.length>256||!secureEqual(supplied,pwd))return res.status(401).json({error:'Неправильний пароль'});
+  if(supplied.length<4||supplied.length>256)return res.status(400).json({error:'Вкажіть пароль доступу Atlantic Home'});
+  const verification=await relay('control',{action:'verifyAccess',password:supplied});
+  if(verification.status!==200||!verification.payload||!(verification.payload as {verified?:boolean}).verified)
+    return res.status(verification.status===401?401:verification.status).json({error:(verification.payload as {error?:string}).error||'Atlantic Home не підтвердив пароль'});
   const payload=Buffer.from(JSON.stringify({expires:Date.now()+ttl*1000})).toString('base64url');
   const value=payload+'.'+signed(payload,secret);
   res.setHeader('Set-Cookie',cookieName+'='+value+'; HttpOnly; Secure; SameSite=Strict; Path=/api/bridge; Max-Age='+ttl);
@@ -78,7 +81,7 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
   return res.status(200).json({authenticated:false});
  }
  if(op==='session'&&req.method==='GET'){
-  return res.status(200).json({authenticated:session(req),configured:Boolean(process.env.VOLTOS_APP_PASSWORD&&sessionSecret())});
+  return res.status(200).json({authenticated:session(req),configured:Boolean(sessionSecret()&&process.env.VOLTOS_BRIDGE_SECRET&&process.env.ATLANTIC_BRIDGE_URL)});
  }
  if(!session(req))return res.status(401).json({error:'Увійдіть у VOLTOS для доступу до Atlantic.'});
  if(op==='state'&&req.method==='GET'){
