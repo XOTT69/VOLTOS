@@ -15,6 +15,9 @@ let lastError='';
 let controls: {led:number|null;eco:number|null;chargeMode:number|null;lifting:number|null}|null=null;
 let controlBusy=false;
 let chartHours=24;
+let threshold=Number(localStorage.getItem('voltos-low-battery')||20);
+if(!Number.isFinite(threshold)||threshold<5||threshold>90)threshold=20;
+let lowChargeNotified=false;
 let chartMetric:'output'|'input'|'soc'='output';
 
 let poller:ReturnType<typeof setInterval>|null=null;
@@ -57,7 +60,7 @@ function hero(){
  return '<section class="energy-hero"><div class="hero-top"><span>ENERGY OVERVIEW</span><span class="hero-indicator">'+(live?'● BLUETOOTH LIVE':'◉ ДИЗАЙН-ПРЕВ’Ю')+'</span></div><div class="hero-inner"><div class="charge-ring" style="--soc:'+soc+'"><div class="ring-center"><strong>'+soc+'<small>%</small></strong><span>'+(live?'BLUETTI EB3A':'ДЕМО')+'</span></div></div><div class="hero-copy"><span class="hero-kicker">'+(live?'ЗАРЯД СТАНЦІЇ':'ТВОЯ ЕНЕРГОСИСТЕМА')+'</span><h2>'+(live?'Підключено':'Енергія під контролем')+'</h2><p>'+(live?'Вимірювання з пристрою':'Підключи EB3A для отримання реальних показників')+'</p><div class="hero-metrics"><span>↓ '+(reading?reading.inputWatts:'—')+' Вт</span><span>↑ '+(reading?reading.outputWatts:'—')+' Вт</span></div></div></div><div class="hero-foot"><span>Прогноз автономності</span><strong>'+(reading?computedRuntime(reading.soc,reading.outputWatts,268.8):'—')+'</strong></div></section>';
 }
 function controlsMarkup(){
- if(!reading)return '';
+ if(!reading)return '<section class="controls-section"><div class="section-title"><h2>Центр керування</h2><span>Прев’ю</span></div><div class="controls-grid">'+[['AC 230 В','Розетки'],['DC / USB','Живлення гаджетів'],['ECO','Енергозбереження'],['Power Lifting','Підвищена потужність']].map(([n,d])=>'<div class="control-tile"><div><strong>'+n+'</strong><small>'+d+'</small></div><button class="toggle-action" disabled>Демо</button></div>').join('')+'</div><p class="controls-warning">Демонстрація дизайну. Реальні команди доступні тільки після підключення EB3A.</p></section>';
  const act=(name:string,description:string,key:string,current:boolean|null,next:number)=>'<div class="control-tile"><div><strong>'+name+'</strong><small>'+description+'</small></div><button type="button" data-control="'+key+'" data-value="'+next+'" '+(current===null||controlBusy?'disabled':'')+' class="toggle-action '+(current?'enabled':'')+'">'+(current===null?'Н/Д':current?'Увімк.':'Вимк.')+'</button></div>';
  const sel=(name:string,description:string,key:string,current:number|null,values:[number,string][])=>'<div class="control-tile"><div><strong>'+name+'</strong><small>'+description+'</small></div><select data-control-select="'+key+'" '+(current===null||controlBusy?'disabled':'')+'>'+values.map(([v,label])=>'<option value="'+v+'" '+(current===v?'selected':'')+'>'+label+'</option>').join('')+'</select></div>';
  return '<section class="controls-section"><div class="section-title"><h2>Керування EB3A</h2><span>З підтвердженням</span></div><div class="controls-grid">'+act('AC 230 В','Розетки змінного струму','ac',reading.acEnabled,reading.acEnabled?0:1)+act('DC / USB','Порти постійного струму','dc',reading.dcEnabled,reading.dcEnabled?0:1)+act('ECO','Економний режим','eco',controls?.eco==null?null:controls.eco===1,controls?.eco===1?0:1)+act('Power Lifting','Підвищена потужність','lifting',controls?.lifting==null?null:controls.lifting===1,controls?.lifting===1?0:1)+sel('Режим заряджання','Швидкість заряджання','chargeMode',controls?.chargeMode??null,[[0,'Standard'],[1,'Silent'],[2,'Turbo']])+sel('LED','Вбудований ліхтарик','led',controls?.led??null,[[4,'Вимкнено'],[1,'Слабкий'],[2,'Яскравий'],[3,'SOS']])+'</div><p class="controls-warning">Команди виконуються тільки після ручного підтвердження й перевіряються зчитуванням. Не вимикай AC, якщо підключено критичні прилади.</p></section>';
@@ -67,7 +70,7 @@ function analyticsMarkup(){
  const value=(p:Point)=>chartMetric==='soc'?p.soc:chartMetric==='input'?p.input:p.output;
  const max=Math.max(1,...points.map(value));
  const tabs=(values:[string,string][],active:string,key:string)=>values.map(([v,label])=>'<button data-'+key+'="'+v+'" class="'+(active===v?'active':'')+'">'+label+'</button>').join('');
- const bars=points.length?'<div class="history-bars">'+points.map(p=>'<div class="history-bar" title="'+new Date(p.at).toLocaleString('uk-UA')+' / '+value(p)+'"><i style="height:'+Math.max(3,value(p)/max*100)+'%"></i></div>').join('')+'</div>':'<div class="empty-inline">У вибраному періоді ще немає вимірювань.</div>';
+ const bars=points.length?'<div class="history-bars">'+points.map(p=>'<div class="history-bar" title="'+new Date(p.at).toLocaleString('uk-UA')+' / '+value(p)+'"><i style="height:'+Math.max(3,value(p)/max*100)+'%"></i></div>').join('')+'</div>':'<div class="preview-chart"><span>ДЕМО-ГРАФІК · НЕ РЕАЛЬНІ ВИМІРЮВАННЯ</span><div class="history-bars">'+Array.from({length:32},(_,i)=>'<div class="history-bar"><i style="height:'+(12+Math.round(Math.abs(Math.sin(i*.9)*65+Math.cos(i*.3)*17)))+'%"></i></div>').join('')+'</div></div>';
  return '<div class="history-panel"><span class="eyebrow">РЕАЛЬНА ІСТОРІЯ · EB3A</span><h2>Аналітика енергії</h2><p>Дані записуються локально, коли застосунок відкритий.</p><div class="chart-toolbar">'+tabs([['1','1 год'],['24','24 год'],['168','7 днів']],String(chartHours),'hours')+'</div><div class="chart-toolbar">'+tabs([['output','Вихід'],['input','Вхід'],['soc','Заряд']],chartMetric,'metric')+'</div>'+bars+'<div class="chart-caption">'+points.length+' вимірювань · '+(chartMetric==='soc'?'%':'Вт')+'</div><button id="export" class="action outline">Експорт CSV</button></div>';
 }
 
@@ -98,7 +101,7 @@ function render(){
  }else if(selected==='analytics'){
   body=analyticsMarkup();
  }else{
-  body='<div class="history-panel"><span class="eyebrow">ПАРАМЕТРИ</span><h2>Джерела енергії</h2><p>BLUETTI EB3A: '+escapeHtml(eb3a.connected?'підключено':'не підключено')+'</p><p>Oukitel P2001E Plus: інтеграція захищеного Cloud API у розробці. Облікові дані виробника не вводяться в PWA.</p><p>На iPhone Safari не підтримує Web Bluetooth — для керування EB3A потрібна нативна збірка Xcode.</p><p>Платформа: '+(Capacitor.isNativePlatform()?'Нативна':'Браузерна')+'</p></div>';
+  body='<div class="history-panel"><span class="eyebrow">ПОПЕРЕДЖЕННЯ</span><h2>Низький заряд</h2><p>Локальне попередження, поки застосунок відкритий. Фонові push потребують хмарного моніторингу.</p><label for="threshold" class="threshold-label">Рівень попередження <b>'+threshold+'%</b></label><input id="threshold" type="range" min="5" max="90" step="5" value="'+threshold+'"></div><div class="history-panel"><span class="eyebrow">ПАРАМЕТРИ</span><h2>Джерела енергії</h2><p>BLUETTI EB3A: '+escapeHtml(eb3a.connected?'підключено':'не підключено')+'</p><p>Oukitel P2001E Plus: інтеграція захищеного Cloud API у розробці. Облікові дані виробника не вводяться в PWA.</p><p>На iPhone Safari не підтримує Web Bluetooth — для керування EB3A потрібна нативна збірка Xcode.</p><p>Платформа: '+(Capacitor.isNativePlatform()?'Нативна':'Браузерна')+'</p></div>';
 
  }
  el!.innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">'+icon('bolt')+'</span><span>VOLTOS<small>ENERGY OS</small></span></div><nav class="desktop-nav">'+navButton('home','Головна','home')+navButton('devices','Пристрої','battery')+navButton('analytics','Графіки','chart')+navButton('settings','Параметри','settings')+'</nav><div class="side-footer">VOLTOS 0.2 · Native BLE Preview</div></aside><main class="main"><header class="topbar"><div class="mobile-brand"><span class="mark">'+icon('bolt')+'</span> VOLTOS</div><span class="preview-pill">'+(reading?'● BLUETOOTH LIVE':'● BLE PREVIEW')+'</span></header><div class="page-scroll"><section class="content"><p class="overline">VOLTOS / '+title().toUpperCase()+'</p><div class="heading"><div><h1>'+title()+'</h1><p>Контроль енергії в одному місці.</p></div></div>'+body+'</section></div><nav class="bottom-nav">'+navButton('home','Головна','home')+navButton('devices','Пристрої','battery')+navButton('analytics','Графіки','chart')+navButton('settings','Параметри','settings')+'</nav></main></div>';
@@ -111,6 +114,7 @@ function render(){
  document.querySelectorAll<HTMLButtonElement>('[data-hours]').forEach(b=>b.onclick=()=>{chartHours=Number(b.dataset.hours);render();});
  document.querySelectorAll<HTMLButtonElement>('[data-metric]').forEach(b=>b.onclick=()=>{chartMetric=b.dataset.metric as typeof chartMetric;render();});
  document.getElementById('export')?.addEventListener('click',exportCsv);
+ document.getElementById('threshold')?.addEventListener('change',e=>{threshold=Number((e.currentTarget as HTMLInputElement).value);localStorage.setItem('voltos-low-battery',String(threshold));lowChargeNotified=false;render();});
  (document.getElementById('refresh') as HTMLButtonElement|null)?.toggleAttribute('disabled',busy);
  (document.getElementById('connect') as HTMLButtonElement|null)?.toggleAttribute('disabled',connecting);
 }
@@ -119,6 +123,8 @@ async function refresh(){
  busy=true;statusText='Зчитування телеметрії…';render();
  try{
   const updated=await eb3a.refresh();reading=updated;saveSample(updated);
+  if(updated.soc<=threshold&&!lowChargeNotified){lowChargeNotified=true;window.alert('VOLTOS: заряд EB3A '+updated.soc+'%. Поріг: '+threshold+'%.');}
+  if(updated.soc>threshold)lowChargeNotified=false;
   lastError='';statusText='Bluetooth підключено';
  }catch(e){statusText='Помилка зчитування';lastError=e instanceof Error?e.message:String(e);}
  finally{busy=false;render();}
