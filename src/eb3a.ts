@@ -39,7 +39,8 @@ export class Eb3aBle {
     if(!Capacitor.isNativePlatform() && !('bluetooth' in navigator))
       throw Error('BLE потребує iOS/Android застосунку або сумісного браузера.');
     await BleClient.initialize();
-    const selected=await BleClient.requestDevice({services:[SERVICE]});
+    const selected=await BleClient.requestDevice({optionalServices:[SERVICE],displayMode:'list'});
+    if(!/EB3A|BLUETTI/i.test(selected.name||''))throw Error('Вибраний пристрій не схожий на BLUETTI EB3A.');
     if(!selected.deviceId)throw Error('Не вибрано станцію.');
     this.deviceId=selected.deviceId;
     this.name=selected.name||'BLUETTI EB3A';
