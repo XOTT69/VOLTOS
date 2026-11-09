@@ -1,4 +1,14 @@
-import { type Sample, type Source, runtimeMinutes } from './core';
+import { type Sample, type Source, runtimeMinutes, inRange } from './core';
+export function batteryForecast(soc: number | null, input: number | null, output: number | null, capacity: number, reserve = 20, reportedMinutes?: number | null) {
+ const valid = inRange(soc,0,100) && inRange(input,0,100000) && inRange(output,0,100000) && inRange(capacity,100,100000) && inRange(reserve,0,90);
+ const net = valid ? output! - input! : null;
+ const mode = net === null ? 'unknown' : net > 2 ? 'discharging' : net < -2 ? 'charging' : 'balanced';
+ const fromStation = mode === 'discharging' && inRange(reportedMinutes,1,5939);
+ const minutes = mode === 'discharging' ? fromStation ? Math.round(reportedMinutes!) : runtimeMinutes(soc,net,capacity) : null;
+ const reserveMinutes = minutes === null ? null : soc! <= reserve ? 0 : Math.round(minutes * (soc!-reserve) / soc!);
+ const usableWh = valid ? capacity * Math.max(0,soc!-reserve)/100 * .84 : null;
+ return { mode, netWatts: net, minutes, reserveMinutes, usableWh, fromStation, chargingMinutes: mode === 'charging' ? chargeMinutes(soc,input,output,capacity) : null };
+}
 export function energyEstimate(samples: Sample[], source: Source, deviceId: string, now = Date.now()) {
  const points = samples.filter(p => p.source === source && p.deviceId === deviceId && p.at >= now - 86400000 && p.at <= now).sort((a,b) => a.at-b.at);
  let outputWh = 0, inputWh = 0, coveredMs = 0;

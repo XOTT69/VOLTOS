@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authBytes, decodeFields, encodeFields, FrameDecoder, loginProof, packet, privateIPv4, type Fields } from '../src/oukitel-wire';
 import { energyEstimate, chargeMinutes } from '../src/device-insights';
-const fake = vi.hoisted(() => ({ listeners: {} as Record<string,(event: {sessionId:string;data?:string;connected?:boolean})=>void>, sent: [] as {command:number;fields:Fields}[], id:'', key: null as CryptoKey|null, iv: null as Uint8Array<ArrayBuffer>|null, values: {1:75,4:0,5:120,43:true,44:false,46:true} as Fields }));
+const fake = vi.hoisted(() => ({ omit:0, listeners: {} as Record<string,(event: {sessionId:string;data?:string;connected?:boolean})=>void>, sent: [] as {command:number;fields:Fields}[], id:'', key: null as CryptoKey|null, iv: null as Uint8Array<ArrayBuffer>|null, values: {1:75,4:0,5:120,43:true,44:false,46:true} as Fields }));
 vi.mock('@capacitor/core', () => ({ registerPlugin: () => ({
  addListener: async (name:string, callback:(event:{sessionId:string;data?:string;connected?:boolean})=>void) => {fake.listeners[name]=callback;return {remove:async()=>{}};},
  connect: async ({sessionId}:{sessionId:string}) => {fake.id=sessionId;},
@@ -17,15 +17,15 @@ vi.mock('@capacitor/core', () => ({ registerPlugin: () => ({
   const payload=new Uint8Array(await crypto.subtle.decrypt({name:'AES-CBC',iv:fake.iv!},fake.key!,frame.payload));
   if(frame.command===19){const fields=decodeFields(payload);fake.sent.push({command:19,fields});Object.assign(fake.values,fields);}
   if(frame.command===17){
-   const entries=Object.entries(fake.values).filter(([tag])=>Number(tag)!==100).map(([tag,value])=>[Number(tag),typeof value==='boolean'?'bool':'num',value] as [number,'bool'|'num',boolean|number]);
+   const entries=Object.entries(fake.values).filter(([tag])=>Number(tag)!==100 && Number(tag)!==fake.omit).map(([tag,value])=>[Number(tag),typeof value==='boolean'?'bool':'num',value] as [number,'bool'|'num',boolean|number]);
    await reply(20,encodeFields(entries),true);
   }
  },
 }) }));
 import { OukitelLan } from '../src/oukitel-lan';
 const key='AAECAwQFBgcICQoLDA0ODw==';
-beforeEach(async()=>{fake.sent=[];fake.values={1:75,4:0,5:120,43:true,44:false,46:true};fake.key=await crypto.subtle.importKey('raw',authBytes(key),'AES-CBC',false,['encrypt','decrypt']);fake.iv=new TextEncoder().encode('0123456789abcdef');});
-afterEach(()=>vi.restoreAllMocks());
+beforeEach(async()=>{fake.id='';fake.omit=0;fake.sent=[];fake.values={1:75,2:240,3:30,4:0,5:120,20:100,27:0,43:true,44:false,46:true};fake.key=await crypto.subtle.importKey('raw',authBytes(key),'AES-CBC',false,['encrypt','decrypt']);fake.iv=new TextEncoder().encode('0123456789abcdef');});
+afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers();});
 describe('LAN wire boundary',()=>{
  it('only accepts unicast private IPv4 peers',()=>{
   for(const host of ['192.168.1.50','10.0.0.8','172.16.0.12'])expect(privateIPv4(host)).toBe(true);
@@ -68,6 +68,52 @@ describe('local Oukitel session',()=>{
   }finally{await client.disconnect();}
  });
  it('rejects controls while disconnected',async()=>{const client=new OukitelLan(()=>{},()=>{});await expect(client.setOutput('ac',false)).rejects.toThrow('недоступний');});
+ it('reads station forecasts and confirms a numeric charging setting through telemetry',async()=>{
+  const readings:unknown[]=[], client=new OukitelLan(r=>readings.push(r),()=>{});
+  try{
+   await client.connect('192.168.1.50',key,{productKey:'p11wN7',deviceKey:'D',deviceName:'Station',productName:'P2001E Plus',online:true});
+   await vi.waitFor(()=>expect(readings.at(-1)).toMatchObject({remainingMinutes:240,chargeRate:100,frequency:0}));
+   await client.setSetting('chargeRate',50);
+   expect(fake.sent).toContainEqual({command:19,fields:{20:50}});
+   expect(readings.at(-1)).toMatchObject({chargeRate:50});
+   await expect(client.setSetting('chargeRate',101)).rejects.toThrow('не підтримується');
+   await expect(client.setSetting('frequency',1)).rejects.toThrow('вимкни AC');
+   await client.setOutput('ac',false);await client.setSetting('frequency',1);
+   expect(fake.sent).toContainEqual({command:19,fields:{27:1}});
+  }finally{await client.disconnect();}
+ });
+ it('does not accept a numeric write without readback of that exact tag',async()=>{
+  const client=new OukitelLan(()=>{},()=>{});
+  try{
+   await client.connect('192.168.1.50',key,{productKey:'p11wN7',deviceKey:'D',deviceName:'Station',productName:'P2001E Plus',online:true});
+   fake.omit=20;vi.useFakeTimers();
+   const result=expect(client.setSetting('chargeRate',50)).rejects.toThrow('не підтвердила');
+   await vi.waitFor(()=>expect(fake.sent).toContainEqual({command:19,fields:{20:50}}));
+   await vi.advanceTimersByTimeAsync(10001);await result;
+  }finally{await client.disconnect();}
+ });
+ it('cancels before asynchronous setup can create a background connection',async()=>{
+  const client=new OukitelLan(()=>{},()=>{});
+  const attempt=client.connect('192.168.1.50',key,{productKey:'P',deviceKey:'D',deviceName:'Station',productName:'P2001E Plus',online:true});
+  await client.disconnect();await expect(attempt).rejects.toThrow('скасовано');expect(fake.id).toBe('');
+ });
+ it('does not expose advanced settings for an unverified product',async()=>{
+  const readings:unknown[]=[],client=new OukitelLan(r=>readings.push(r),()=>{});
+  try{
+   await client.connect('192.168.1.50',key,{productKey:'unknown',deviceKey:'D',deviceName:'Station',productName:'Other model',online:true});
+   await vi.waitFor(()=>expect(readings.at(-1)).toMatchObject({chargeRate:null,frequency:null,remainingMinutes:null}));
+   await expect(client.setSetting('chargeRate',50)).rejects.toThrow('не підтримується');
+   expect(fake.sent.some(frame=>Object.hasOwn(frame.fields,20))).toBe(false);
+  }finally{await client.disconnect();}
+ });
+ it('rejects a stale setting even when other power telemetry was refreshed',async()=>{
+  const client=new OukitelLan(()=>{},()=>{});
+  try{
+   await client.connect('192.168.1.50',key,{productKey:'p11wN7',deviceKey:'D',deviceName:'Station',productName:'P2001E Plus',online:true});
+   vi.useFakeTimers();vi.setSystemTime(Date.now()+31000);fake.omit=20;await client.refresh();
+   await expect(client.setSetting('chargeRate',50)).rejects.toThrow('Свіжий стан');
+  }finally{await client.disconnect();}
+ });
 });
 describe('device insights',()=>{
  it('integrates measured intervals and does not invent energy during gaps',()=>{

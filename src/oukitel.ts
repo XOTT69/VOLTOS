@@ -6,6 +6,7 @@ export interface OukitelReading {
  device:OukitelDevice; soc:number|null; inputWatts:number|null;outputWatts:number|null;
  temperatureC:number|null; acOn:boolean|null;dcOn:boolean|null;usbOn:boolean|null;
  cloudCheckedAt:string|null; measuredAt?:string; source:'quectel-cloud-shadow'|'quectel-lan'; freshness:'unknown'|'live';
+ remainingMinutes?:number|null; chargingMinutes?:number|null; chargeRate?:number|null; frequency?:number|null;
 }
 export interface OukitelControlResult {accepted:boolean;confirmed:boolean;on:boolean;port:'ac'|'dc'|'usb';message:string}
 export const oukitel={

@@ -6,7 +6,7 @@ import { oukitel, type OukitelDevice, type OukitelReading } from './oukitel';
 import { ApiError } from './native-api';
 import { OukitelLan } from './oukitel-lan';
 import { authBytes, privateIPv4 } from './oukitel-wire';
-import { energyEstimate, chargeMinutes, planLoads } from './device-insights';
+import { energyEstimate, planLoads, batteryForecast } from './device-insights';
 import { native, tap, shareCsv, SecureSession } from './native';
 import { fresh, summarize, runtimeMinutes, series, chartPaths, csv, climateCapability, inRange, type Source, type Metric, type Sample } from './core';
 import { registers, type BleControls, type Control } from './protocol';
@@ -30,7 +30,7 @@ const state = {
  restoring: true, online: navigator.onLine, active: true, alert: inRange(storedAlert, 5, 90) ? storedAlert : 20,
  oukCapacity: inRange(storedCapacity, 100, 20000) ? storedCapacity : 2048, forecastWatts: 100,
  deviceView: 'controls' as DeviceView, favorites: read('voltos-favorites', '').split(',').filter(Boolean) as Source[],
- oukTransport: 'cloud' as 'cloud' | 'lan', lanRetries: 0, lanBusy: false, lanError: '', lanStatus: '', lanHost: read('voltos-lan-host'),
+ oukTransport: (native && read('voltos-ouk-transport') === 'lan' ? 'lan' : 'cloud') as 'cloud' | 'lan', lanRetries: 0, lanBusy: false, lanError: '', lanStatus: '', lanHost: read('voltos-lan-host'),
  lowNotified: false, samples: loadHistory(), entries: loadJournal(), detail: null as Source | null, theme: read('voltos-theme', 'dark'),
 };
 let oukGeneration = 0, atlGeneration = 0, noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -38,6 +38,7 @@ let historyWarning = false;
 let lastFocused: HTMLElement | null = null;
 let appliedDark: boolean | undefined;
 let lanRetryTimer: ReturnType<typeof setTimeout> | undefined;
+let lanGeneration = 0;
 const lan = new OukitelLan(reading => {
  if(state.oukTransport !== 'lan')return;
  state.lanRetries = 0; state.ouk = reading; state.lanError = ''; state.lanStatus = 'Прямі пакети станції надходять у VOLTOS';
@@ -51,8 +52,8 @@ const lan = new OukitelLan(reading => {
  if(error)scheduleLanRetry();
 });
 function scheduleLanRetry(){
- if(!native || !state.active || state.oukTransport !== 'lan' || state.lanBusy || lanRetryTimer || state.lanRetries >= 3 || read('voltos-lan-auto') !== 'on')return;
- const delay=2000*2**state.lanRetries;
+ if(!native || !state.active || state.oukTransport !== 'lan' || state.lanBusy || lanRetryTimer || read('voltos-lan-auto') !== 'on')return;
+ const delay=Math.min(60000,2000*2**Math.min(state.lanRetries,5));
  lanRetryTimer=setTimeout(()=>{lanRetryTimer=undefined;state.lanRetries++;void connectLan(undefined,true);},delay);
 }
 function chosenLanDevice(host:string): OukitelDevice {
@@ -63,7 +64,7 @@ function chosenLanDevice(host:string): OukitelDevice {
 }
 async function connectLan(form?: HTMLFormElement, automatic=false) {
  if(!native){notify('Локальний Wi-Fi доступний у встановленій iPhone-версії','info');return;}
- if(state.lanBusy || lan.ready)return;
+ if(state.lanBusy || lan.ready || automatic && !state.active)return;
  if(form)state.lanRetries=0;
  clearTimeout(lanRetryTimer);lanRetryTimer=undefined;
  const data = form ? new FormData(form) : null;
@@ -71,6 +72,9 @@ async function connectLan(form?: HTMLFormElement, automatic=false) {
  if(!privateIPv4(host)){notify('Вкажи приватну IPv4-адресу станції','error');return;}
  const device = chosenLanDevice(host), keyName = `oukitel-lan-${device.deviceKey}`;
  const remember = form ? data?.get('remember') === 'on' : read('voltos-lan-auto') === 'on';
+ const generation = ++lanGeneration;
+ if(form && !remember)write('voltos-lan-auto','off');
+ const current = () => generation === lanGeneration && state.active && state.oukTransport === 'lan';
  let key = String(data?.get('key') || '').trim();
  (document.activeElement as HTMLElement)?.blur();
  state.lanBusy = true; state.lanError = ''; render();
@@ -83,20 +87,33 @@ async function connectLan(form?: HTMLFormElement, automatic=false) {
   }
   if(!key)throw Error('Потрібен персональний ключ станції. Увійди у Cloud або введи ключ вручну.');
   authBytes(key);
+  if(!current())return;
+  // Save the connection intent before the handshake so a brief app suspension
+  // cannot lose a previously selected address or the opt-in to reconnect.
+  if(remember){await SecureSession.setSession({key:keyName,value:key});write('voltos-lan-auto','on');}
+  if(!current())return;
+  state.lanHost=host;write('voltos-lan-host',host);write('voltos-lan-device',JSON.stringify(device));write('voltos-ouk-transport','lan');
   await lan.connect(host,key,device);
+  if(!current()){await lan.disconnect();return;}
   state.oukId = device.deviceKey; state.lanHost = host;
   write('voltos-lan-host',host);write('voltos-lan-device',JSON.stringify(device));write('voltos-oukitel-device',device.deviceKey);
-  if(remember){await SecureSession.setSession({key:keyName,value:key});write('voltos-lan-auto','on');}
-  else {await SecureSession.removeSession({key:keyName});write('voltos-lan-auto','off');}
+  if(!remember){await SecureSession.removeSession({key:keyName});write('voltos-lan-auto','off');}
   log('Oukitel: локальний Wi-Fi канал авторизовано','success');
   if(!automatic)notify('Канал підключено. Очікуємо прямі показники станції.','info');
- } catch(error){state.lanError=errorText(error);if(error instanceof ApiError&&error.status===401){state.oukAuthed=false;state.oukError=state.lanError;}if(!automatic)notify(state.lanError,'error');}
- finally{key='';state.lanBusy=false;render();if(!lan.ready && state.lanError)scheduleLanRetry();}
+ } catch(error){if(current()){state.lanError=errorText(error);if(error instanceof ApiError&&error.status===401){state.oukAuthed=false;state.oukError=state.lanError;}if(!automatic)notify(state.lanError,'error');}}
+ finally{key='';state.lanBusy=false;render();if(!lan.ready)scheduleLanRetry();}
 }
 async function disconnectLan(manual=true) {
+ const generation=++lanGeneration;
  clearTimeout(lanRetryTimer);lanRetryTimer=undefined;
- await lan.disconnect();state.lanBusy=false;state.lanStatus='Локальний канал від’єднано';state.lanError='';
- if(manual)write('voltos-lan-auto','off');render();
+ if(manual)write('voltos-lan-auto','off');
+ await lan.disconnect();if(generation !== lanGeneration)return;state.lanStatus=manual?'Автопідключення призупинено':'Зв’язок відновиться після повернення';state.lanError='';render();
+}
+function resumeLan() {
+ if(!native || !state.active || state.oukTransport !== 'lan' || read('voltos-lan-auto') !== 'on' || !state.lanHost)return;
+ clearTimeout(lanRetryTimer);lanRetryTimer=undefined;state.lanRetries=0;
+ if(!lan.ready){void connectLan(undefined,true);return;}
+ void lan.refresh().catch(async()=>{await disconnectLan(false);if(state.active)void connectLan(undefined,true);});
 }
 async function controlLan(port:'ac'|'dc'|'usb',on:boolean) {
  if(!isOukAvailable()||state.commandBusy)return;
@@ -106,6 +123,18 @@ async function controlLan(port:'ac'|'dc'|'usb',on:boolean) {
  try{await lan.setOutput(port,on);log(`Oukitel LAN: ${port.toUpperCase()} → ${on ? 'увімкнено' : 'вимкнено'}, підтверджено`,'success');notify('Станція підтвердила стан виходу','success');}
  catch(error){notify(errorText(error),'error');log(`Oukitel LAN: ${errorText(error)}`,'error');}
  finally{state.commandBusy=false;render();}
+}
+async function controlLanSetting(setting: 'chargeRate' | 'frequency', value: number) {
+ if(!Number.isInteger(value) || (setting === 'chargeRate' ? !inRange(value,3,100) : ![0,1].includes(value))){notify('Вкажи коректне значення параметра','error');return;}
+ const device = state.ouk?.device.deviceKey;
+ if(!isOukAvailable() || state.commandBusy || state.lanBusy)return;
+ const description = setting === 'chargeRate' ? `Обмежити потужність AC-заряджання до ${value}%. Це не поріг заряду батареї.` : `Частота AC-виходу: ${value === 0 ? 50 : 60} Гц. AC має залишатися вимкненим.`;
+ if(!await ask('Змінити налаштування станції?',description)){renderDetail(true);return;}
+ if(!isOukAvailable() || state.commandBusy || state.ouk?.device.deviceKey !== device)return;
+ state.commandBusy=true;render();
+ try{await lan.setSetting(setting,value);notify('Новий параметр підтверджено станцією','success');log(`Oukitel: ${description}`,'success');}
+ catch(error){notify(errorText(error),'error');}
+ finally{state.commandBusy=false;renderDetail(true);}
 }
 
 const isBleFresh = () => ble.connected && !state.bleError && fresh(state.ble?.measuredAt, 45000);
@@ -285,17 +314,39 @@ function deviceOverview(source: Source) {
  const quick = `<div class="workspace-actions"><button class="btn primary" data-device-view="controls">${icon('settings')}Керування</button><button class="btn secondary" data-device-view="history">${icon('analytics')}Історія</button></div>`;
  if(source === 'atlantic')return `<section class="device-dashboard climate-dashboard"><span class="eyebrow">КЛІМАТ У ТВОЄМУ ДОМІ</span><div class="dashboard-number">${num(climate?.roomTemperature,1)}<small>°C</small></div><span class="dashboard-sub">Ціль ${num(climate?.targetTemperature,1)} °C · ${h(climate?.mode || 'режим невідомий')}</span>${quick}</section><div class="insights-grid"><div><span>Конвектор</span><strong>${climate?.power == null ? '—' : climate.power ? 'Увімкнено' : 'Вимкнено'}</strong></div><div><span>Шлюз</span><strong>${climate ? climate.gatewayOnline ? 'Онлайн' : 'Офлайн' : '—'}</strong></div></div><p class="fine">${available ? 'Показники Cozytouch доступні.' : 'Підключи Atlantic або онови зв’язок.'} Редагування розкладу залишається у Cozytouch; підтримуваний режим PROG доступний у керуванні.</p>`;
  const output = d?.outputWatts ?? null, input = d?.inputWatts ?? null;
- return `<section class="device-dashboard"><div class="dashboard-kicker"><span class="eyebrow">ОСОБИСТА ПАНЕЛЬ СТАНЦІЇ</span>${icon(symbols[source])}</div><div class="dashboard-number">${num(d?.soc)}<small>%</small></div><span class="dashboard-sub">${available ? sourceLabel(source) : 'Останній стан / очікування підключення'}</span><span class="dashboard-time">${icon('clock')}${source === 'bluetti' ? ago(state.ble?.measuredAt) : ago(oukObservedAt() || undefined)}${source === 'oukitel' && state.oukTransport === 'cloud' ? ' · час запиту до хмари' : ''}</span><div class="dashboard-flow"><div><span>Надходить</span><strong>${num(input)} <small>Вт</small></strong></div><div><span>Споживання</span><strong>${num(output)} <small>Вт</small></strong></div><div><span>Баланс</span><strong>${input === null || output === null ? '—' : `${input-output > 0 ? '+' : ''}${num(input-output)}`} <small>Вт</small></strong></div></div>${quick}</section><div class="insights-grid"><div><span>До розряду · оцінка</span><strong>${available ? duration(runtimeMinutes(d?.soc ?? null,output,capacity)) : '—'}</strong></div><div><span>До 100% · оцінка</span><strong>${available ? duration(chargeMinutes(d?.soc ?? null,input,output,capacity)) : '—'}</strong></div><div><span>Віддано за записами доби</span><strong>${energy.hasCoverage ? num(energy.outputWh,1) : '—'} <small>Вт·год</small></strong></div><div><span>Покриття записами</span><strong>${energy.coveredMinutes} <small>хв / добу</small></strong></div></div>${source === 'bluetti' && state.ble ? `<div class="insights-grid ac-dc-detail"><div><span>AC · вхід</span><strong>${num(state.ble.acInputWatts)} <small>Вт</small></strong></div><div><span>DC · вхід</span><strong>${num(state.ble.dcInputWatts)} <small>Вт</small></strong></div><div><span>AC · вихід</span><strong>${num(state.ble.acOutputWatts)} <small>Вт</small></strong></div><div><span>DC · вихід</span><strong>${num(state.ble.dcOutputWatts)} <small>Вт</small></strong></div></div>` : source === 'oukitel' && state.ouk?.source === 'quectel-cloud-shadow' ? `<div class="setting-row"><span>Температура · хмарний знімок</span><strong>${num(state.ouk.temperatureC)} °C</strong></div>` : ''}<section class="load-plans"><h3>План на відключення</h3>${planLoads(available ? d?.soc ?? null : null,capacity).map(load=>`<div><span>${h(load.name)}<small>${h(load.detail)} · ${load.watts} Вт</small></span><strong>${duration(load.minutes)}</strong></div>`).join('')}<p class="fine">Умовні навантаження, не автоматизації. Оцінки залежать від фактичної ємності та втрат. Прогалини в історії не домальовуються.</p></section>`;
+ const projection = batteryForecast(available ? d?.soc ?? null : null,input,output,capacity,0,source === 'oukitel' ? state.ouk?.remainingMinutes : null);
+ return `${stationForecast(source)}<section class="device-dashboard"><div class="dashboard-kicker"><span class="eyebrow">ОСОБИСТА ПАНЕЛЬ СТАНЦІЇ</span>${icon(symbols[source])}</div><div class="dashboard-number">${num(d?.soc)}<small>%</small></div><span class="dashboard-sub">${available ? sourceLabel(source) : 'Останній стан / очікування підключення'}</span><span class="dashboard-time">${icon('clock')}${source === 'bluetti' ? ago(state.ble?.measuredAt) : ago(oukObservedAt() || undefined)}${source === 'oukitel' && state.oukTransport === 'cloud' ? ' · час запиту до хмари' : ''}</span><div class="dashboard-flow"><div><span>Надходить</span><strong>${num(input)} <small>Вт</small></strong></div><div><span>Споживання</span><strong>${num(output)} <small>Вт</small></strong></div><div><span>Баланс</span><strong>${input === null || output === null ? '—' : `${input-output > 0 ? '+' : ''}${num(input-output)}`} <small>Вт</small></strong></div></div>${quick}</section><div class="insights-grid"><div><span>До розряду · оцінка</span><strong>${duration(projection.minutes)}</strong></div><div><span>До 100% · оцінка</span><strong>${duration(projection.chargingMinutes)}</strong></div><div><span>Віддано за записами доби</span><strong>${energy.hasCoverage ? num(energy.outputWh,1) : '—'} <small>Вт·год</small></strong></div><div><span>Покриття записами</span><strong>${energy.coveredMinutes} <small>хв / добу</small></strong></div></div>${source === 'bluetti' && state.ble ? `<div class="insights-grid ac-dc-detail"><div><span>AC · вхід</span><strong>${num(state.ble.acInputWatts)} <small>Вт</small></strong></div><div><span>DC · вхід</span><strong>${num(state.ble.dcInputWatts)} <small>Вт</small></strong></div><div><span>AC · вихід</span><strong>${num(state.ble.acOutputWatts)} <small>Вт</small></strong></div><div><span>DC · вихід</span><strong>${num(state.ble.dcOutputWatts)} <small>Вт</small></strong></div></div>` : source === 'oukitel' && state.ouk?.source === 'quectel-cloud-shadow' ? `<div class="setting-row"><span>Температура · хмарний знімок</span><strong>${num(state.ouk.temperatureC)} °C</strong></div>` : ''}<section class="load-plans"><h3>План на відключення</h3>${planLoads(available ? d?.soc ?? null : null,capacity).map(load=>`<div><span>${h(load.name)}<small>${h(load.detail)} · ${load.watts} Вт</small></span><strong>${duration(load.minutes)}</strong></div>`).join('')}<p class="fine">Умовні навантаження, не автоматизації. Оцінки залежать від фактичної ємності та втрат. Прогалини в історії не домальовуються.</p></section>`;
 }
 function deviceHistory(source: Source) {
  const id = deviceId(source), metric: Metric = source === 'atlantic' ? 'room' : 'soc';
  const rows = series(state.samples,source,id,metric,24), paths = chartPaths(rows,metric,24);
  return `<section class="workspace-history"><div class="section-heading"><h3>${source === 'atlantic' ? 'Температура' : 'Заряд'} · остання доба</h3><span class="badge">${rows.length} записів</span></div>${rows.length > 1 ? `<div class="mini-history"><svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Історія поточного пристрою"><path d="${paths.line}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg></div>` : `<div class="empty-chart">${icon('analytics')}<h3>Тут буде твоя історія</h3><p>Записи збираються після підключення пристрою.</p></div>`}<div class="workspace-actions"><button class="btn primary" data-device-analytics="${source}">${icon('analytics')}Повна аналітика</button><button class="btn secondary" data-device-export="${source}" ${rows.length ? '' : 'disabled'}>${icon('download')}CSV</button></div><p class="fine">У цій панелі тільки ${h(deviceName(source))}. ${source === 'oukitel' ? 'Історія позначає окремо хмарні знімки й локальні показники.' : 'Локальні записи, поки застосунок активний.'}</p></section>`;
 }
+function stationForecast(source: 'bluetti' | 'oukitel') {
+ const d = devicePower(source), available = source === 'bluetti' ? isBleFresh() : isOukAvailable();
+ const id = deviceId(source), capacity = source === 'bluetti' ? 268.8 : state.oukCapacity;
+ const storedReserve = Number(read(`voltos-reserve-${id}`,'20')), storedWatts = Number(read(`voltos-plan-${id}`,'100'));
+ const reserve = inRange(storedReserve,0,90) ? storedReserve : 20, watts = inRange(storedWatts,10,5000) ? storedWatts : 100;
+ const result = batteryForecast(available ? d?.soc ?? null : null,d?.inputWatts ?? null,d?.outputWatts ?? null,capacity,reserve,source === 'oukitel' ? state.ouk?.remainingMinutes : null);
+ const finish = (minutes: number | null) => minutes === null ? '—' : new Date(Date.now()+minutes*60000).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'}) + (minutes >= 1440 ? ' · '+new Date(Date.now()+minutes*60000).toLocaleDateString('uk-UA',{day:'numeric',month:'short'}) : '');
+ const message = result.mode === 'charging' ? 'Заряджається: надходить більше, ніж споживається' : result.mode === 'balanced' ? 'Баланс живлення: помітного розряду зараз немає' : result.mode === 'unknown' ? 'Прогноз з’явиться зі свіжими показниками станції' : result.fromStation ? 'Час повідомила станція' : 'Оцінка за зарядом, ємністю та балансом потужності';
+ return `<section class="station-forecast"><div class="section-heading"><div><span class="eyebrow">ТВІЙ ЗАПАС ЕНЕРГІЇ</span><h3>На скільки ще вистачить</h3></div>${icon('clock')}</div><div class="forecast-hero"><strong data-runtime>${duration(result.minutes)}</strong><span>${h(message)}</span></div><div class="insights-grid"><div><span>До резерву ${reserve}%</span><strong data-reserve-time>${duration(result.reserveMinutes)}</strong><small>Орієнтовно до ${finish(result.reserveMinutes)}</small></div><div><span>До повного заряду</span><strong>${duration(result.chargingMinutes)}</strong><small>За незмінного балансу потужності</small></div></div><label class="field row-field">Залишити запас<select data-reserve-source="${source}">${[0,10,20,30,50].map(n=>`<option value="${n}" ${n===reserve?'selected':''}>${n}%</option>`).join('')}</select></label><div class="load-calculator"><h3>Якщо вимкнуть світло</h3><label class="field row-field">Навантаження, Вт<input data-plan-source="${source}" type="number" inputmode="numeric" min="10" max="5000" step="10" value="${watts}"></label><div class="setting-row"><span>За навантаження ${watts} Вт · до ${reserve}%</span><strong data-plan-time>${duration(result.usableWh === null ? null : Math.round(result.usableWh/watts*60))}</strong></div><div class="setting-row"><span>Щоб вистачило на 8 годин · до ${reserve}%</span><strong>${result.usableWh === null ? '—' : Math.floor(result.usableWh/8)} Вт</strong></div></div><p class="fine">Запас — лише межа прогнозу: виходи автоматично не вимикаються. Розрахунок враховує надходження енергії; для плану без мережі — ККД 84%. Навантаження, фактична ємність і втрати змінюють час.</p></section>`;
+}
+function lanAdvanced() {
+ const d = state.ouk, disabled = !isOukAvailable() || state.commandBusy || state.lanBusy;
+ const charge = d?.chargeRate, frequency = d?.frequency;
+ return `<section class="detail-section advanced-controls"><h3>Заряджання та AC</h3><label class="field row-field">Потужність AC-заряджання<input id="lan-charge-rate" type="number" inputmode="numeric" min="3" max="100" step="1" value="${charge ?? ''}" placeholder="—" ${disabled || charge == null ? 'disabled' : ''}></label><div class="charge-presets">${[25,50,100].map(n=>`<button class="btn secondary" data-charge-rate="${n}" ${disabled || charge == null ? 'disabled' : ''}>${n}%</button>`).join('')}<button class="btn primary" data-action="lan-charge-apply" ${disabled || charge == null ? 'disabled' : ''}>Застосувати</button></div><p class="fine">Ліміт потужності заряджання від мережі, не верхній відсоток заряду батареї. Поточне значення: ${charge == null ? 'не повідомлено станцією' : num(charge)+'%'}.</p><label class="field row-field">Частота AC<select id="lan-frequency" ${disabled || frequency == null || d?.acOn !== false ? 'disabled' : ''}>${frequency == null ? '<option>Недоступно</option>' : ''}<option value="0" ${frequency===0?'selected':''}>50 Гц</option><option value="1" ${frequency===1?'selected':''}>60 Гц</option></select></label><p class="fine">Зміна частоти доступна після підтвердженого вимкнення AC. Параметри активуються лише зі свіжою відповіддю сумісної станції.</p></section>`;
+}
+function runtimeStrip() {
+ const d=state.ouk;
+ if(!d || !isOukAvailable())return '';
+ const result=batteryForecast(d.soc,d.inputWatts,d.outputWatts,state.oukCapacity,20,d.remainingMinutes);
+ return `<button class="runtime-strip" data-device-view="overview">${icon('clock')}<span>${result.mode === 'charging' ? 'До повного заряду' : result.mode === 'balanced' ? 'Живлення збалансовано' : 'Ще вистачить'}<strong>${duration(result.mode === 'charging' ? result.chargingMinutes : result.minutes)}</strong></span>${icon('arrow')}</button>`;
+}
 function lanDetail() {
  const d = state.ouk?.source === 'quectel-lan' ? state.ouk : null;
- return (d ? metrics([['Заряд',num(d.soc),'%'],['Надходить',num(d.inputWatts),'Вт'],['Споживання',num(d.outputWatts),'Вт']]) + `<div class="detail-caption">Прямі дані · ${ago(d.measuredAt)}</div>` : '<p class="detail-intro">Прямий канал до Oukitel у твоєму Wi-Fi. Потік показників читає VOLTOS, відкривати фірмовий застосунок для кожного оновлення не потрібно.</p>') + inlineError(state.lanError) +
- (lan.ready ? `<div class="connection-health"><span>${icon('wifi')}Локальний канал</span><strong>${isOukAvailable() ? 'Дані надходять' : 'Очікуємо телеметрію'}</strong><p>${h(state.lanStatus)}</p></div><div class="button-row">${button('Запитати показники','lan-refresh','refresh','secondary',state.lanBusy)}${button('Від’єднати','lan-disconnect','','ghost',state.commandBusy)}</div>${d ? `<div class="detail-section"><h3>Виходи Oukitel · LAN</h3>${switchRow('AC 230 В','Безпосередньо зі станції','ac',d.acOn,!isOukAvailable()||state.commandBusy,'ouk')}${switchRow('DC','Постійний струм','dc',d.dcOn,!isOukAvailable()||state.commandBusy,'ouk')}${switchRow('USB','Заряджання гаджетів','usb',d.usbOn,!isOukAvailable()||state.commandBusy,'ouk')}</div>` : ''}` :
+ return (d ? metrics([['Заряд',num(d.soc),'%'],['Надходить',num(d.inputWatts),'Вт'],['Споживання',num(d.outputWatts),'Вт']]) + `<div class="detail-caption">Прямі дані · ${ago(d.measuredAt)}</div>` : '<p class="detail-intro">Прямий канал до Oukitel у твоєму Wi-Fi. Потік показників читає VOLTOS, відкривати фірмовий застосунок для кожного оновлення не потрібно.</p>') + inlineError(state.lanError) + runtimeStrip() +
+ (lan.ready ? `<div class="connection-health"><span>${icon('wifi')}Локальний канал</span><strong>${isOukAvailable() ? 'Дані надходять' : 'Очікуємо телеметрію'}</strong><p>${h(state.lanStatus)} · ${h(state.lanHost)}</p><label class="checkbox-field"><input id="lan-auto" type="checkbox" ${read('voltos-lan-auto')==='on'?'checked':''}>Підключатися при відкритті VOLTOS та після розриву Wi-Fi</label></div><div class="button-row">${button('Запитати показники','lan-refresh','refresh','secondary',state.lanBusy)}${button('Призупинити','lan-disconnect','','ghost',state.commandBusy)}</div>${d ? `<div class="detail-section"><h3>Виходи Oukitel · LAN</h3>${switchRow('AC 230 В','Безпосередньо зі станції','ac',d.acOn,!isOukAvailable()||state.commandBusy,'ouk')}${switchRow('DC','Постійний струм','dc',d.dcOn,!isOukAvailable()||state.commandBusy,'ouk')}${switchRow('USB','Заряджання гаджетів','usb',d.usbOn,!isOukAvailable()||state.commandBusy,'ouk')}</div>${lanAdvanced()}${stationForecast('oukitel')}` : ''}` :
  `<form id="lan-connect" class="login-form"><label class="field">IP станції у домашній мережі<input id="lan-host" name="host" value="${h(state.lanHost)}" inputmode="decimal" autocomplete="off" placeholder="192.168.1.50" required></label><details class="manual-key"><summary>Маю персональний ключ станції</summary><label class="field">Локальний authKey<input name="key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Base64 · 16 байтів"></label></details><label class="checkbox-field"><input name="remember" type="checkbox" checked> Запам’ятати ключ у Keychain та підключатися автоматично</label><button class="btn primary" ${!native || state.lanBusy ? 'disabled' : ''}>${icon('wifi')}${state.lanBusy ? 'Підключення…' : 'Підключити напряму'}</button><p class="fine">${state.oukAuthed ? 'Без введеного ключа VOLTOS спробує отримати його для твоєї прив’язаної станції через захищений сервер.' : 'Увійди у Cloud один раз для отримання персонального ключа або введи свій ключ вручну.'}</p></form>`) +
  `<div class="note compact">${icon('info')}<p>${native ? 'iPhone і станція мають бути в одній мережі. IP можна знайти у списку клієнтів роутера. На запит iOS дозволь Local Network.' : 'Локальний TCP доступний у встановленій iPhone-версії, браузер не підтримує таке підключення.'} Залежно від прошивки станція може потребувати зв’язку з хмарою навіть для LAN-звітів. Без нових пакетів показники не позначаються як свіжі.</p></div>`;
 }
@@ -559,6 +610,7 @@ async function action(name: string) {
  if (name === 'close-detail') return closeDetail();
  if(name === 'lan-refresh')return lan.refresh();
  if(name === 'lan-disconnect')return disconnectLan();
+ if(name === 'lan-charge-apply')return controlLanSetting('chargeRate',Number(document.querySelector<HTMLInputElement>('#lan-charge-rate')?.value));
  if(name === 'rename-device' && state.detail){const value=(document.querySelector<HTMLInputElement>('#device-name')?.value||'').trim().slice(0,48);if(value){write(`voltos-name-${state.detail}`,value);(document.activeElement as HTMLElement)?.blur();render();notify('Назву збережено','success');}return;}
  if (name === 'refresh') return refreshAll();
  if (name === 'ble-connect') return connectBle();
@@ -594,6 +646,7 @@ root.addEventListener('click', event => {
  if (target.dataset.hours) { state.hours = Number(target.dataset.hours); render(); return; }
  if (target.dataset.theme) { state.theme = target.dataset.theme; write('voltos-theme', state.theme); render(); return; }
  const task = target.dataset.action ? () => action(target.dataset.action!) :
+  target.dataset.chargeRate ? () => controlLanSetting('chargeRate',Number(target.dataset.chargeRate)) :
   target.dataset.bleControl ? () => controlBle(target.dataset.bleControl as Control, Number(target.dataset.value)) :
   target.dataset.oukControl ? () => controlOukitel(target.dataset.oukControl as 'ac' | 'dc' | 'usb', target.dataset.value === '1') :
   target.dataset.atlControl ? () => controlAtlantic('power', target.dataset.value === '1') :
@@ -618,6 +671,13 @@ root.addEventListener('input', event => {
 });
 root.addEventListener('change', event => {
  const input = event.target as HTMLInputElement;
+ if(input.id === 'lan-auto'){write('voltos-lan-auto',input.checked?'on':'off');if(input.checked)resumeLan();else {clearTimeout(lanRetryTimer);lanRetryTimer=undefined;}return;}
+ if(input.id === 'lan-frequency'){input.blur();void controlLanSetting('frequency',Number(input.value));return;}
+ if(input.dataset.reserveSource || input.dataset.planSource){
+  const source=(input.dataset.reserveSource || input.dataset.planSource) as 'bluetti'|'oukitel', value=Number(input.value);
+  if(input.dataset.reserveSource ? ![0,10,20,30,50].includes(value) : !inRange(value,10,5000)){notify('Перевір значення прогнозу','error');return;}
+  write(`voltos-${input.dataset.reserveSource ? 'reserve' : 'plan'}-${deviceId(source)}`,String(value));input.blur();renderDetail(true);return;
+ }
  if (input.id === 'history-device') { state.historyId = input.value; input.blur(); render(); }
  if (input.id === 'capacity') {
   const value = Number(input.value);
@@ -639,20 +699,23 @@ detailDialog.addEventListener('cancel', () => { if(state.detail)deviceViews[stat
 detailDialog.addEventListener('click', event => { if (event.target === detailDialog) { const bounds = detailDialog.getBoundingClientRect(); if (event.clientY < bounds.top || event.clientX < bounds.left || event.clientX > bounds.right) closeDetail(); } });
 ble.onDisconnect(() => { state.bleControls = null; state.bleError = 'Bluetooth від’єднано. Підключи станцію знову.'; log(state.bleError, 'error'); render(); });
 async function restore() {
+ // Local credentials are sufficient: never wait for a slow/offline cloud first.
+ resumeLan();
  const og = oukGeneration, ag = atlGeneration;
  await Promise.allSettled([
   (async () => { try { const session = await oukitel.session(); if (og !== oukGeneration) return; state.oukAuthed = session.connected; if (session.connected) await refreshOukitel(true); } catch (error) { if (og === oukGeneration) state.oukError = errorText(error); } })(),
   (async () => { try { const session = await atlantic.session(); if (ag !== atlGeneration) return; state.atlAuthed = session.authenticated; state.atlConfigured = session.configured; if (session.authenticated) await refreshAtlantic(); } catch (error) { if (ag === atlGeneration) state.atlError = errorText(error); } })(),
  ]);
  state.restoring = false; render();
- if(native && read('voltos-ouk-transport')==='lan' && read('voltos-lan-auto')==='on' && state.lanHost){state.oukTransport='lan';void connectLan();}
+ resumeLan();
 }
-function resume() { state.online = navigator.onLine; if (ble.connected) void refreshBle(); if (state.oukAuthed) void refreshOukitel(); if (state.atlAuthed) void refreshAtlantic(); render(); }
+function resume() { state.online = navigator.onLine; resumeLan(); if (ble.connected) void refreshBle(); if (state.oukAuthed && state.oukTransport !== 'lan') void refreshOukitel(); if (state.atlAuthed) void refreshAtlantic(); render(); }
 window.addEventListener('online', resume);
 window.addEventListener('offline', () => { state.online = false; render(); });
-document.addEventListener('visibilitychange', () => { state.active = document.visibilityState === 'visible'; if (state.active) resume(); });
+function setActive(active: boolean) { if(state.active === active){if(active)resume();return;}state.active=active;if(active)resume();else void disconnectLan(false); }
+document.addEventListener('visibilitychange', () => setActive(document.visibilityState === 'visible'));
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
-if (native) void App.addListener('appStateChange', ({ isActive }) => { state.active = isActive; if (isActive) {resume();if(state.oukTransport==='lan' && !lan.ready && read('voltos-lan-auto')==='on')void connectLan();} else if(lan.ready)void disconnectLan(false); });
+if (native) void App.addListener('appStateChange', ({ isActive }) => setActive(isActive));
 setInterval(() => { if (state.active && document.visibilityState === 'visible' && ble.connected) void refreshBle(); }, 12000);
 setInterval(() => { if (state.active && document.visibilityState === 'visible') { if (state.oukAuthed) void refreshOukitel(); if (state.atlAuthed) void refreshAtlantic(); render(); } }, 60000);
 setInterval(() => { if (state.active && !detailDialog.open && document.visibilityState === 'visible') render(); }, 15000);

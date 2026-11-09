@@ -7,10 +7,10 @@
 | Перевірка | Результат | Межа доказу |
 |---|---|---|
 | TypeScript клієнта та API | Пройдено | Обидва tsconfig виконуються під час build |
-| Production Vite build | Пройдено | 41 модуль, основний JS близько 37 KB gzip, CSS близько 7.4 KB gzip |
-| Unit / integration | 58 тестів пройдено | Телеметрія, CSV, протокол, транспорт BLE, адаптери, API-доступ і ownership, міграція, native bearer/Keychain lifecycle через mock |
-| WebKit iPhone viewport | 13 сценаріїв пройдено | Браузер WebKit із параметрами iPhone, не iOS Simulator |
-| Chromium mobile viewport | 13 сценаріїв пройдено | Контрольні API-відповіді, перевірка UI і подій |
+| Production Vite build | Пройдено | 41 модуль, основний JS близько 39.5 KB gzip, CSS близько 7.7 KB gzip |
+| Unit / integration | 67 тестів пройдено | Телеметрія, прогноз, протокол, транспорт BLE/LAN, адаптери, API-доступ і ownership, міграція, native bearer/Keychain lifecycle через mock |
+| WebKit iPhone viewport | 17 сценаріїв пройдено | Браузер WebKit із параметрами iPhone, не iOS Simulator |
+| Chromium mobile viewport | 17 сценаріїв пройдено | Контрольні API-відповіді, перевірка UI і подій |
 | Production PWA offline | 1 тест пройдено | Перезавантаження без мережі, precache JS/CSS, відсутність API у кеші |
 | iOS arm64 compilation | `BUILD SUCCEEDED` | Xcode, SDK iphoneos27.2, Debug, `CODE_SIGNING_ALLOWED=NO`; не встановлення на телефон |
 | Native sync | Пройдено | Bluetooth LE, App, Filesystem, Haptics, Share; Swift-міст включений у Sources |
@@ -96,3 +96,15 @@ Production smoke-check виявив `ERR_MODULE_NOT_FOUND` у Atlantic API: runt
 Swift тепер повертає `{value: null}`. Обидва читачі також підтримують порожній payload старішої збірки. Помилка читання заблокованого Keychain продовжує відхиляти запит і дозволяє повтор, без підміни помилки відсутньою сесією.
 
 Перевірено `npm run check` (58 тестів), `npm run ios:sync` та успішну unsigned-компіляцію iPhone. Новий Playwright-сценарій пройшов окремо у WebKit і Chromium: емулює native Keychain з `undefined`, відновлює Cloud-стан, залишає ручний LAN-ключ порожнім і перевіряє, що запит ключа надсилається для обраної станції. Відповіді контрольні; фізичний handshake зі станцією цей тест не виконує.
+
+## Автопідключення, прогноз і параметри LAN
+
+Користувач підтвердив, що попереднє LAN-підключення на його станції запрацювало. Нове відновлення після фону та нові параметри ще потребують перевірки на його iPhone; результати автоматичних тестів не замінюють цього.
+
+- Весь браузерний набір: 34 сценарії у WebKit/Chromium. Нові сценарії перевіряють старт збереженої станції до відповіді хмари, перезавантаження, фон → повернення, ручну паузу, продовження після чотирьох невдалих спроб, прогноз/резерв/план навантаження, скасування й підтвердження параметрів.
+- 67 unit/integration тестів: додатково перевірено net power, заряджання й passthrough без хибного countdown, невідомі дані, placeholder 5940, числовий TTLV/readback, AC=false перед зміною частоти, старі значення параметрів, непідтримувану модель та скасування до завершення async setup.
+- Події після криптографічного await повторно звіряють session ID: завершення роботи старого сокета не публікує показники й не записує команди в нову сесію.
+- Пройдено нову production-офлайн-перевірку, синхронізацію iOS і unsigned iPhone build. Після уточнення розташування прогнозу сценарій налаштувань/макета додатково пройшов у двох браузерах.
+- `previews/iphone-live-forecast.png` — контрольні 75%/240 хв, не реальна телеметрія станції. Прогноз візуально перевірено на iPhone viewport.
+
+План, інструкція й обмеження — [AUTOCONNECT-FORECAST.md](AUTOCONNECT-FORECAST.md). Серверний API в цьому оновленні не змінювався; для iPhone потрібне встановлення оновленого bundle через Xcode Run.

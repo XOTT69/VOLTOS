@@ -17,9 +17,10 @@ export class OukitelLan {
  private key: CryptoKey | null = null; private keyBytes: Uint8Array<ArrayBuffer> | null = null; private iv: Uint8Array<ArrayBuffer> | null = null;
  private attached: Promise<unknown> | null = null; private receiveQueue: Promise<unknown> = Promise.resolve(); private sendQueue: Promise<unknown> = Promise.resolve();
  private heartbeat: ReturnType<typeof setInterval> | null = null; private connectedAt = 0; private lastReport = 0;
+ private generation = 0;
  private values: Fields = {}; private updated: Record<number, number> = {}; private device: OukitelDevice | null = null;
  private auth: { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
- private command: { tag: number; on: boolean; resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
+ private command: { tag: number; value: boolean | number; resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
  ready = false;
  constructor(private onReading: (reading: OukitelReading) => void, private onStatus: (message: string, error: boolean) => void) {}
  private async attach() {
@@ -40,9 +41,13 @@ export class OukitelLan {
  async connect(host: string, authKey: string, device: OukitelDevice) {
   if (!privateIPv4(host)) throw Error('Вкажи приватну IPv4-адресу станції, наприклад 192.168.1.50');
   const bytes = authBytes(authKey);
-  await this.disconnect(); await this.attach();
+  const closing = this.disconnect(), generation = this.generation;
+  const current = () => { if(generation !== this.generation)throw Error('Підключення скасовано'); };
+  await closing; current();
+  await this.attach(); current();
   this.keyBytes = bytes;
-  this.key = await crypto.subtle.importKey('raw', bytes, 'AES-CBC', false, ['encrypt','decrypt']);
+  const key = await crypto.subtle.importKey('raw', bytes, 'AES-CBC', false, ['encrypt','decrypt']);
+  current(); this.key = key;
   this.id = crypto.randomUUID(); const id = this.id;
   this.device = device; this.values = {}; this.updated = {}; this.decoder = new FrameDecoder(); this.connectedAt = Date.now(); this.lastReport = 0;
   const authenticated = new Promise<void>((resolve,reject) => {
@@ -71,18 +76,22 @@ export class OukitelLan {
     payload = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CBC', iv: this.iv },this.key,bytes));
    }
    this.pid = this.pid >= 65534 ? 1000 : this.pid + 1;
+   if(this.id !== id)throw Error('Локальна сесія змінилася');
    const frame = packet(this.pid,command,payload);
    await NativeLan.write({ sessionId: id, data: btoa(String.fromCharCode(...frame)) });
   });
   this.sendQueue = operation.catch(() => {}); return operation;
  }
  private async handle(frame: LanFrame) {
+  const id=this.id;
   if (frame.command === 28723) {
    if (!this.auth || !this.keyBytes) return;
    const fields = decodeFields(frame.payload), nonce = Object.values(fields).find(v => typeof v === 'string' && new TextEncoder().encode(v).length === 16);
    if (typeof nonce !== 'string') throw Error('Станція повернула некоректний nonce');
    this.iv = new TextEncoder().encode(nonce);
-   await this.send(28724,encodeFields([[2,'string',await loginProof(this.keyBytes,nonce)]])); return;
+   const proof=await loginProof(this.keyBytes,nonce);
+   if(id !== this.id)return;
+   await this.send(28724,encodeFields([[2,'string',proof]])); return;
   }
   if (frame.command === 28725) {
    if (!this.auth) return;
@@ -94,6 +103,7 @@ export class OukitelLan {
   if (frame.command === 28727) { await this.send(28728); return; }
   if (!this.ready || !this.key || !this.iv || ![17,20].includes(frame.command) || !frame.payload.length) return;
   const clear = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CBC', iv: this.iv },this.key,frame.payload));
+  if(id !== this.id)return;
   const fields = decodeFields(clear), now = Date.now();
   Object.assign(this.values,fields); Object.keys(fields).forEach(tag => { this.updated[Number(tag)] = now; });
   const number = (tag: number, min: number, max: number) => now-(this.updated[tag] || 0) < 30000 && inRange(this.values[tag],min,max) ? this.values[tag] as number : null;
@@ -102,11 +112,14 @@ export class OukitelLan {
   // A heartbeat or output-only ACK must never make old power values appear fresh.
   const powerReport = [1,4,5].some(tag => Object.hasOwn(fields,tag)) && [soc,input,output].some(v => v !== null);
   if(powerReport)this.lastReport = now;
-  if ((powerReport || this.lastReport > 0 && [43,44,46].some(tag => Object.hasOwn(fields,tag))) && this.device) {
+  if ((powerReport || this.lastReport > 0 && [2,3,20,27,43,44,46].some(tag => Object.hasOwn(fields,tag))) && this.device) {
    this.onReading({ device: { ...this.device, online: true }, soc, inputWatts: input, outputWatts: output, temperatureC: null,
-    acOn: bool(43), dcOn: bool(46), usbOn: bool(44), cloudCheckedAt: null, measuredAt: new Date(this.lastReport).toISOString(), source: 'quectel-lan', freshness: 'live' });
+    acOn: bool(43), dcOn: bool(46), usbOn: bool(44),
+    remainingMinutes: this.supportedSettings() ? number(2,0,5939) : null, chargingMinutes: this.supportedSettings() ? number(3,0,5939) : null,
+    chargeRate: this.supportedSettings() ? number(20,3,100) : null, frequency: this.supportedSettings() ? number(27,0,1) : null,
+    cloudCheckedAt: null, measuredAt: new Date(this.lastReport).toISOString(), source: 'quectel-lan', freshness: 'live' });
   }
-  if (this.command && Object.hasOwn(fields,this.command.tag) && fields[this.command.tag] === this.command.on) {
+  if (this.command && Object.hasOwn(fields,this.command.tag) && fields[this.command.tag] === this.command.value) {
    clearTimeout(this.command.timer); this.command.resolve(); this.command = null;
   }
  }
@@ -116,19 +129,36 @@ export class OukitelLan {
   await this.send(28729,encodeFields([[1,'num',30],[2,'num',1]]),true);
  }
  async refresh() { if (!this.ready) throw Error('Спочатку підключи локальну станцію'); await this.subscribe(); }
+ private supportedSettings() { return this.device?.productKey === 'p11wN7' || /P2001E\s*Plus/i.test(this.device?.productName || ''); }
+ async setSetting(setting: 'chargeRate' | 'frequency', value: number) {
+  const tag = setting === 'chargeRate' ? 20 : setting === 'frequency' ? 27 : 0;
+  if(!this.supportedSettings() || !tag || !Number.isInteger(value) || (setting === 'chargeRate' ? !inRange(value,3,100) : ![0,1].includes(value)))throw Error('Параметр не підтримується цією станцією');
+  if(setting === 'frequency' && (this.values[43] !== false || Date.now()-(this.updated[43]||0) >= 30000))throw Error('Спочатку вимкни AC-вихід і дочекайся підтвердження');
+  await this.writeConfirmed(tag,value);
+ }
  async setOutput(port: 'ac' | 'dc' | 'usb', on: boolean) {
   const tag = portTags[port];
-  if (!this.ready || this.command || !tag || !this.lastReport || Date.now()-this.lastReport > 30000 || typeof this.values[tag] !== 'boolean' || Date.now()-(this.updated[tag]||0) > 30000) throw Error('Свіжий стан виходу недоступний. Спочатку онови показники.');
+  if(!tag || typeof on !== 'boolean')throw Error('Невідомий вихід станції');
+  await this.writeConfirmed(tag,on);
+ }
+ private async writeConfirmed(tag: number, value: boolean | number) {
+  if (!this.ready || this.command || !this.lastReport || Date.now()-this.lastReport > 30000 || typeof this.values[tag] !== typeof value || Date.now()-(this.updated[tag]||0) > 30000) throw Error('Свіжий стан параметра недоступний. Спочатку онови показники.');
+  if(this.values[tag] === value)return;
   const confirmed = new Promise<void>((resolve,reject) => {
    const timer = setTimeout(() => { this.command = null; reject(Error('Команду надіслано, але станція ще не підтвердила стан виходу')); },10000);
-   this.command = { tag, on, resolve, reject, timer };
+   this.command = { tag, value, resolve, reject, timer };
   });
-  try { await Promise.all([this.send(19,encodeFields([[tag,'bool',on]]),true).then(() => this.send(17,Uint8Array.from(u16(tag)),true)),confirmed]); }
+  try { await Promise.all([this.send(19,encodeFields([[tag,typeof value === 'boolean' ? 'bool' : 'num',value]]),true).then(() => this.send(17,Uint8Array.from(u16(tag)),true)),confirmed]); }
   catch (error) { this.rejectCommand(error instanceof Error ? error : Error('Команду не підтверджено')); throw error; }
  }
  private rejectCommand(error: Error) { if(this.command){clearTimeout(this.command.timer);this.command.reject(error);this.command=null;} }
- private async fail(message: string) { await this.disconnect(); this.onStatus(message,true); }
+ private async fail(message: string) {
+  const closing=this.disconnect(), generation=this.generation;
+  await closing;
+  if(generation === this.generation)this.onStatus(message,true);
+ }
  async disconnect() {
+  this.generation++;
   const id = this.id; this.id = ''; this.ready = false;
   if (this.heartbeat) clearInterval(this.heartbeat); this.heartbeat = null;
   if (this.auth) { clearTimeout(this.auth.timer); this.auth.reject(Error('Локальне підключення завершено')); this.auth = null; }
