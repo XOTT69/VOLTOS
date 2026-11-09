@@ -1,4 +1,4 @@
-import { type ApiRequest as VercelRequest, type ApiResponse as VercelResponse, validClimateCommand } from '../server/http';
+import { type ApiRequest as VercelRequest, type ApiResponse as VercelResponse, validClimateCommand } from '../server/http.js';
 import { createHmac, createHash, timingSafeEqual } from 'node:crypto';
 
 const cookieName='voltos_session';

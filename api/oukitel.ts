@@ -1,4 +1,4 @@
-import type { ApiRequest as VercelRequest, ApiResponse as VercelResponse } from '../server/http';
+import type { ApiRequest as VercelRequest, ApiResponse as VercelResponse } from '../server/http.js';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 
 const BASE='https://iot-api.quecteleu.com';

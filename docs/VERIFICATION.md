@@ -79,3 +79,9 @@ Production offline-тест виявив, що `Vary: Origin` на статич�
 Фізичний запуск виявив помилку, якої не показує компіляція: SceneDelegate створював стандартний CAPBridgeViewController, хоча Main.storyboard посилався на VoltosViewController. Програмне створення root controller обходило storyboard і реєстрацію VoltosNative/OukitelLan. SceneDelegate тепер створює VoltosViewController безпосередньо.
 
 Перед ios:sync виконується scripts/check-ios-bridge.mjs: перевіряє фактичний scene entrypoint, відповідність JS plugin names, реєстрацію Swift plugin instances та включення Swift-файлів у проєкт. Це статична перевірка нативного wiring, не заміна фізичного запуску. Повторна компіляція iPhone завершилась BUILD SUCCEEDED; повторний запуск на телефоні потребує встановлення оновленого binary через Xcode.
+
+## Перевірка Node ESM під час публікації
+
+Production smoke-check виявив `ERR_MODULE_NOT_FOUND` у Atlantic API: runtime-імпорт `../server/http` не містив розширення. Production повернуто до попереднього працездатного deployment на час виправлення. Імпорт змінено на `../server/http.js`, а серверний TypeScript переведено на `NodeNext`, щоб збірка відхиляла такі несумісні з Node ESM імпорти.
+
+Після виправлення `npm run check` пройшов (54 тести). Обидва серверні handlers додатково скомпільовано в тимчасову директорію та імпортовано звичайним Node без Vite/Vitest resolver: session-запити повернули HTTP 200. Це перевірка запуску скомпільованих модулів, без входу до vendor-акаунтів.
