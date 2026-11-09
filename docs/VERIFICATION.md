@@ -37,14 +37,17 @@ BLE тести відтворюють фрагментовані Modbus-пові
 
 Production offline-тест виявив, що `Vary: Origin` на статичних Vite-ресурсах заважав cache match для модульних JS/CSS після перезавантаження без мережі. `ignoreVary` застосовано тільки до переліку своїх precached build assets; API та сторонні ресурси до цієї гілки не потрапляють. Версія кешу враховує index, icon, manifest, worker template і список hashed assets.
 
-## Живий бекенд: тільки read-only
+## Опублікований бекенд: smoke-перевірка
 
-Без облікових даних перевірено наявний production:
+9 листопада 2026 опубліковано production commit `97e21db88293ca8cb5eb65d9c4ff23982c277138`, deployment `dpl_D6xEVGX4ZRNMykWWsbkg8V4oXSxv`. Перевірено спочатку deployment URL, потім публічну адресу `https://voltos-belli.vercel.app` після promotion:
 
-- `/api/bridge?action=session` → `authenticated:false, configured:true`.
-- `/api/oukitel?action=session` → `connected:false`.
+- `GET /api/bridge?action=session` → HTTP 200, `authenticated:false, configured:true`.
+- `GET /api/oukitel?action=session` → HTTP 200, `connected:false, configured:true`.
+- `POST /api/oukitel?action=lan-key` із native-заголовком без сесії → HTTP 401.
+- Той самий POST зі стороннім Origin → HTTP 403.
+- Головна сторінка → HTTP 200, актуальні hashed JS/CSS assets.
 
-Це підтверджує доступність session endpoints. Воно **не підтверджує** vendor login, показники обладнання чи фізичні команди. Нові серверні виправлення лежать у гілці та потребують окремого деплою; Xcode не розгортає бекенд.
+Це підтверджує запуск обох API та відхилення неавторизованих запитів ключа. Воно **не підтверджує** vendor login, отримання реального ключа, показники обладнання чи фізичні команди. Облікові дані користувача не використовувалися. Xcode не розгортає бекенд; для оновлення Swift-містка потрібен Run на iPhone.
 
 ## Що не перевірялося
 
@@ -52,7 +55,7 @@ Production offline-тест виявив, що `Vary: Origin` на статич�
 - Реальні EB3A, Oukitel і Atlantic: фактична телеметрія та виконання команд.
 - iOS Simulator: встановлені SDK є, runtime і devices у середовищі відсутні.
 - Комерційна multi-tenant безпека та безперервний фоновий збір — поза поточною приватною версією.
-- GitHub Actions: конфігурація додається для майбутніх PR; локальні результати не називаються результатом CI.
+- Результати GitHub Actions перевіряються окремо від локальних: для production commit workflow run `42621028329` завершився успішно; другий workflow перевірявся окремо.
 
 Знімки [головної](previews/iphone-home.png) та [пристроїв](previews/iphone-devices.png) отримані з WebKit на viewport 390×844, scale 3. На них початковий стан без телеметрії; зображення не є скриншотами фізичного iPhone.
 

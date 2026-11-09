@@ -39,7 +39,7 @@ npm run ios:sync
 
 ## Сервери
 
-Нативна збірка використовує `https://voltos-belli.vercel.app`. Після зміни serverless API ці зміни потрібно окремо розгорнути на бекенді; Xcode sync не публікує сервер. До розгортання клієнт сумісний із наявними session/state/control endpoints, але нові серверні перевірки зі зміни діятимуть лише після деплою.
+Нативна збірка використовує `https://voltos-belli.vercel.app`. Backend 2.1, включно з отриманням Oukitel LAN-ключа, опубліковано 9 листопада 2026 (commit `97e21db88293ca8cb5eb65d9c4ff23982c277138`). Після наступних змін serverless API їх потрібно окремо розгортати на бекенді; Xcode sync не публікує сервер.
 
 Для іншого сервера створи `.env.local` з публічним `VITE_API_BASE=https://...`, потім `npm run ios:sync`. Provider keys та bridge secrets залишаються тільки на сервері.
 
@@ -62,7 +62,7 @@ npm run ios:sync
 
 ## Wi-Fi Oukitel у 2.1
 
-Для прямого режиму потрібні одна Wi-Fi мережа, приватний IP, персональний authKey і дозвіл Local Network. Проєкт містить NSLocalNetworkUsageDescription; multicast entitlement не потрібен, broadcast discovery не використовується. Покроково: [OUKITEL-LAN.md](OUKITEL-LAN.md). Автоматичне отримання актуального ключа потребує публікації server endpoint із цієї гілки.
+Для прямого режиму потрібні одна Wi-Fi мережа, приватний IP, персональний authKey і дозвіл Local Network. Проєкт містить NSLocalNetworkUsageDescription; multicast entitlement не потрібен, broadcast discovery не використовується. Покроково: [OUKITEL-LAN.md](OUKITEL-LAN.md). Server endpoint автоматичного отримання ключа вже опубліковано. Для виправлення `VoltosNative is not implemented on ios` потрібно виконати `npm run ios:sync` і Run (⌘R) у Xcode: синхронізація без повторного встановлення binary не оновлює Swift-міст на телефоні.
 
 ## Попередження сторонніх плагінів у Xcode
 
