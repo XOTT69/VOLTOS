@@ -8,11 +8,12 @@
     "build": "tsc --noEmit && tsc --project tsconfig.server.json && vite build && node scripts/build-service-worker.mjs",
     "preview": "vite preview",
     "ios": "npm run ios:sync && npx cap open ios",
-    "ios:sync": "npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && node scripts/ios-brand.mjs",
+    "ios:sync": "node scripts/patch-ios-plugins.mjs && npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && node scripts/ios-brand.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "check": "npm run build && npm test",
-    "test:offline": "playwright test --config playwright.offline.config.ts"
+    "test:offline": "playwright test --config playwright.offline.config.ts",
+    "postinstall": "node scripts/patch-ios-plugins.mjs"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.0.0",

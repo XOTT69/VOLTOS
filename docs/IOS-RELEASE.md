@@ -63,3 +63,11 @@ npm run ios:sync
 ## Wi-Fi Oukitel у 2.1
 
 Для прямого режиму потрібні одна Wi-Fi мережа, приватний IP, персональний authKey і дозвіл Local Network. Проєкт містить NSLocalNetworkUsageDescription; multicast entitlement не потрібен, broadcast discovery не використовується. Покроково: [OUKITEL-LAN.md](OUKITEL-LAN.md). Автоматичне отримання актуального ключа потребує публікації server endpoint із цієї гілки.
+
+## Попередження сторонніх плагінів у Xcode
+
+Для Bluetooth LE 8.3.0 виправлено перетворення companyIdentifier: JSValue → Int → UInt16(exactly:), з перевіркою діапазону. Для Filesystem 8.1.5 прибрано невикористане локальне responseType у legacy download. Виправлення не приховують compiler warnings і не змінюють налаштування підписування.
+
+Скрипт scripts/patch-ios-plugins.mjs запускається через postinstall та ios:sync, зберігає CRLF/LF і повторно нічого не змінює. Він застосовується лише до вказаних версій залежностей. Після оновлення версій потрібно перевірити, чи відповідні upstream-виправлення вже включені.
+
+Після зміни в уже відкритому Xcode виконай Product → Clean Build Folder (⇧⌘K), потім Run (⌘R), щоб прибрати старі діагностичні повідомлення.
