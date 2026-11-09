@@ -11,7 +11,8 @@ function response() {
  };
  return result;
 }
-const request = (action: string, method = 'POST', body?: Record<string, unknown>): ApiRequest => ({ method, query: { action }, headers: { host: 'voltos.test', origin: 'https://voltos.test' }, body });
+let testRequestId=0;
+const request = (action: string, method = 'POST', body?: Record<string, unknown>): ApiRequest => ({ method, query: { action }, headers: { host: 'voltos.test', origin: 'https://voltos.test', 'x-real-ip': `test-${++testRequestId}` }, body });
 function session() {
  const data = Buffer.from(JSON.stringify({ expires: Date.now() + 60000 })).toString('base64url');
  const tag = createHmac('sha256', 'a'.repeat(40)).update(data).digest('base64url');
@@ -112,4 +113,26 @@ describe('Oukitel ownership and provider responses', () => {
   const req = request('devices', 'GET'); req.headers = headers;
   const res = response(); await oukitel(req, res); expect(res.code).toBe(401);
  });
+ it('only returns a current LAN key after native authentication and ownership checks', async () => {
+  const headers=await signedIn();
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({code:0,data:{list:[owned]}})))
+   .mockResolvedValueOnce(new Response(JSON.stringify({code:0,data:{authKey:'MDEyMzQ1Njc4OWFiY2RlZg=='}})));
+  const req=request('lan-key','POST',{pk:'P',dk:'D'});req.headers=headers;
+  const res=response();await oukitel(req,res);
+  expect(res.code).toBe(200);expect(res.payload).toEqual({authKey:'MDEyMzQ1Njc4OWFiY2RlZg==',deviceKey:'D'});
+  expect(res.headers['Cache-Control']).toBe('private, no-store');
+ });
+ it('does not retrieve a LAN key for someone else’s station', async () => {
+  const headers=await signedIn();
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({code:0,data:{list:[owned]}})));
+  const req=request('lan-key','POST',{pk:'P',dk:'OTHER'});req.headers=headers;
+  const res=response();await oukitel(req,res);expect(res.code).toBe(403);
+  expect(vi.mocked(fetch).mock.calls.some(([url])=>String(url).includes('regenerateAuthKey'))).toBe(false);
+ });
+ it('rejects browser access to the LAN-key endpoint before requesting provider data', async () => {
+  const headers=await signedIn();const req=request('lan-key','POST',{pk:'P',dk:'D'});req.headers.cookie='voltos_oukitel='+headers.authorization.slice(7);
+  const res=response();await oukitel(req,res);
+  expect(res.code).toBe(403);expect(fetch).toHaveBeenCalledTimes(2);
+ });
+
 });

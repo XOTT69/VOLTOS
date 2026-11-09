@@ -105,7 +105,7 @@ test('CSV download contains actual rows and clearing history can be cancelled', 
 });
 test('theme persists and small layouts do not overflow', async ({ page }) => {
  await mockApi(page); await page.goto('/'); await page.locator('.tabbar [data-nav="settings"]').click();
- await page.locator('[data-theme="dark"]').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+ await page.locator('button[data-theme="dark"]').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
  await page.reload(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
  for (const width of [320, 375, 430, 1024]) {
   await page.setViewportSize({ width, height: 844 });
@@ -126,4 +126,48 @@ test('legacy history remains viewable and exportable before a new station record
  const downloadPromise = page.waitForEvent('download'); await page.locator('[data-action="export"]').click();
  const download = await downloadPromise, path = await download.path();
  expect(await readFile(path!, 'utf8')).toContain('legacy-bluetti');
+});
+test('login fields keep their DOM identity, caret and values across polling and blur', async ({ page }) => {
+ await mockApi(page); await page.clock.install(); await page.goto('/'); await openOukitel(page);
+ const email=page.locator('#ouk-login input[name="email"]'), password=page.locator('#ouk-login input[name="password"]');
+ await email.fill('owner@example.com'); await password.fill('unfinished-password');
+ await password.evaluate((el:HTMLInputElement)=>{el.dataset.persist='original-node';el.setSelectionRange(6,6);});
+ await page.clock.runFor(65000);
+ await expect(email).toHaveValue('owner@example.com'); await expect(password).toHaveValue('unfinished-password');
+ expect(await password.evaluate((el:HTMLInputElement)=>({marker:el.dataset.persist,caret:el.selectionStart}))).toEqual({marker:'original-node',caret:6});
+ await password.blur();
+ await page.evaluate(()=>window.dispatchEvent(new Event('offline')));
+ await page.clock.runFor(16000);
+ await expect(password).toHaveAttribute('data-persist','original-node'); await expect(email).toHaveValue('owner@example.com');
+});
+test('switches device workspaces and exposes their own overview, controls and history', async ({ page }, info) => {
+ await mockApi(page,{connected:true}); await page.goto('/'); await openOukitel(page);
+ await page.locator('#device-tabs [data-device-view="overview"]').click();
+ await expect(page.locator('.dashboard-number')).toContainText('75'); await expect(page.locator('.load-plans')).toContainText('Робота');
+ if(info.project.name==='iphone-webkit')await page.screenshot({path:'docs/previews/iphone-device-workspace.png'});
+ await page.locator('#device-dock [data-device="atlantic"]').click();
+ await expect(page.locator('#detail-title')).toHaveText('Atlantic Altis Eco Boost'); await expect(page.locator('#atl-login')).toBeVisible();
+ await page.locator('#device-dock [data-device="bluetti"]').click();
+ await expect(page.locator('#detail-title')).toHaveText('BLUETTI EB3A'); await expect(page.locator('[data-action="ble-connect"]')).toBeVisible();
+ await page.locator('#device-tabs [data-device-view="history"]').click(); await expect(page.locator('.workspace-history')).toContainText('BLUETTI EB3A');
+ await page.locator('#device-dock [data-device="oukitel"]').click();
+ await expect(page.locator('.dashboard-number')).toContainText('75');
+ await page.locator('#device-tabs [data-device-view="controls"]').click();
+ await expect(page.locator('[data-ouk-control="ac"]')).toBeVisible();
+});
+test('personal device name and favorite persist without changing provider identity', async ({ page }) => {
+ await mockApi(page,{connected:true}); await page.goto('/'); await openOukitel(page);
+ await page.locator('[data-favorite="oukitel"]').click();
+ await page.locator('#device-tabs [data-device-view="connection"]').click(); await page.locator('#device-name').fill('Резерв квартири');
+ await page.locator('[data-action="rename-device"]').click(); await expect(page.locator('#detail-title')).toHaveText('Резерв квартири');
+ await page.locator('[data-action="close-detail"]').click(); await page.locator('.tabbar [data-nav="home"]').click();
+ await expect(page.locator('.device-row').first()).toHaveAttribute('data-device','oukitel');
+ await page.reload(); await page.locator('.device-row[data-device="oukitel"]').click(); await expect(page.locator('#detail-title')).toHaveText('Резерв квартири');
+});
+test('explains native LAN requirements instead of faking a browser connection', async ({ page }) => {
+ await mockApi(page);await page.goto('/');await openOukitel(page);
+ await page.locator('[data-transport="lan"]').click(); await expect(page.locator('#lan-connect')).toBeVisible();
+ await expect(page.locator('#lan-connect .btn')).toBeDisabled();
+ await expect(page.locator('#detail-content')).toContainText('браузер не підтримує');
+ await page.locator('[data-transport="cloud"]').click(); await expect(page.locator('#ouk-login')).toBeVisible();
 });

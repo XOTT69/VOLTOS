@@ -68,5 +68,7 @@
 	<true/>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>VOLTOS використовує Bluetooth для зчитування стану та керування твоєю зарядною станцією BLUETTI EB3A.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>VOLTOS підключається до твоєї Oukitel у домашній Wi-Fi мережі для прямих показників і керування без фірмового застосунку.</string>
 </dict>
 </plist>

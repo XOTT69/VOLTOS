@@ -149,6 +149,23 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
  const token=decSession(req);
  if(!token)return res.status(401).json({error:'Підключіть акаунт Oukitel у VOLTOS'});
  try{
+  if(action==='lan-key'&&req.method==='POST'){
+   if(!isNative(req))return res.status(403).json({error:'Локальний ключ доступний лише авторизованій iPhone-версії'});
+   const pk=req.body?.pk,dk=req.body?.dk;
+   if(!safeId(pk)||!safeId(dk))return res.status(400).json({error:'Обери власну станцію'});
+   const result=await provider('/v2/binding/enduserapi/userDeviceList?pageNumber=1&pageSize=50',token);
+   const list=result?.data?.list;
+   if(!Array.isArray(list))return res.status(502).json({error:'Oukitel не повернув список станцій'});
+   const owned=list.find((d:Record<string,unknown>)=>d.productKey===pk&&d.deviceKey===dk);
+   if(!owned)return res.status(403).json({error:'Станція не належить цьому акаунту'});
+   // The binding-list copy may be outdated for shared accounts. This is the
+   // vendor client's current-key endpoint, researched in the attributed LAN project.
+   const current=await provider('/v2/binding/enduserapi/regenerateAuthKey',token,new URLSearchParams({pk,dk}));
+   const authKey=current?.data?.authKey;
+   if(typeof authKey!=='string'||authKey.length>64||!/^[A-Za-z0-9+/]+={0,2}$/.test(authKey)||Buffer.from(authKey,'base64').length!==16)
+    return res.status(409).json({error:'Акаунт не повернув локальний ключ цієї станції. Можна вказати власний ключ вручну.'});
+   return res.status(200).json({authKey,deviceKey:dk});
+  }
   if(action==='devices'&&req.method==='GET')return res.status(200).json({devices:await devices(token)});
   if(action==='control'&&req.method==='POST'){
    const body=req.body as {pk?:unknown;dk?:unknown;port?:unknown;on?:unknown}|undefined;

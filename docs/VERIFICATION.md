@@ -1,4 +1,4 @@
-# Перевірка VOLTOS 2.0
+# Перевірка VOLTOS 2.1
 
 Дата: 9 листопада 2026. Перевірка виконується на локальному checkout гілки `codex/premium-iphone`.
 
@@ -7,10 +7,10 @@
 | Перевірка | Результат | Межа доказу |
 |---|---|---|
 | TypeScript клієнта та API | Пройдено | Обидва tsconfig виконуються під час build |
-| Production Vite build | Пройдено | 38 модулів, основний JS близько 28 KB gzip, CSS близько 6.3 KB gzip |
-| Unit / integration | 41 тест пройдено | Телеметрія, CSV, протокол, транспорт BLE, адаптери, API-доступ і ownership, міграція, native bearer/Keychain lifecycle через mock |
-| WebKit iPhone viewport | 9 сценаріїв пройдено | Браузер WebKit із параметрами iPhone, не iOS Simulator |
-| Chromium mobile viewport | 9 сценаріїв пройдено | Контрольні API-відповіді, перевірка UI і подій |
+| Production Vite build | Пройдено | 41 модуль, основний JS близько 37 KB gzip, CSS близько 7.4 KB gzip |
+| Unit / integration | 54 тести пройдено | Телеметрія, CSV, протокол, транспорт BLE, адаптери, API-доступ і ownership, міграція, native bearer/Keychain lifecycle через mock |
+| WebKit iPhone viewport | 13 сценаріїв пройдено | Браузер WebKit із параметрами iPhone, не iOS Simulator |
+| Chromium mobile viewport | 13 сценаріїв пройдено | Контрольні API-відповіді, перевірка UI і подій |
 | Production PWA offline | 1 тест пройдено | Перезавантаження без мережі, precache JS/CSS, відсутність API у кеші |
 | iOS arm64 compilation | `BUILD SUCCEEDED` | Xcode, SDK iphoneos27.2, Debug, `CODE_SIGNING_ALLOWED=NO`; не встановлення на телефон |
 | Native sync | Пройдено | Bluetooth LE, App, Filesystem, Haptics, Share; Swift-міст включений у Sources |
@@ -61,3 +61,15 @@ Production offline-тест виявив, що `Vary: Origin` на статич�
 - [Capacitor Share](https://capacitorjs.com/docs/apis/share): передавання cache-файла системному меню.
 - [Capacitor Filesystem](https://capacitorjs.com/docs/apis/filesystem#apple-privacy-manifest-requirements): privacy manifest FileTimestamp, причина C617.1.
 - Локальні вихідні коди `@capacitor/ios`: реєстрація CAPBridgedPlugin через `capacitorDidLoad`.
+
+## Додаткові докази 2.1
+
+- Форма логіна/пароля зберігає DOM identity, значення і caret після 65 секунд віртуального polling, blur та наступного rerender у WebKit і Chromium.
+- Перехід Oukitel → Atlantic → BLUETTI → Oukitel, повернення останньої вкладки, особисті назви, обрані та режим LAN без неправдивого browser connection.
+- LAN-протокол: приватні адреси, байтове екранування, фрагментація, checksum, TTLV межі, hello/login, AES-телеметрія, незалежний readback. Підписка не надсилає команд виходам.
+- Незалежні опубліковані синтетичні test vectors із MIT-дослідження перевіряють точний SHA-256 proof і розшифрування телеметрії. Це не ключ користувача.
+- API LAN-key перевіряє session, native transport і ownership перед отриманням ключа; вебдоступ та чужий пристрій відхиляються.
+- Оцінка енергії не інтегрує прогалини, не поєднує різні пристрої чи транспорти.
+- OukitelLan.swift включений у нативну компіляцію; запуск на власній Oukitel не заявляється.
+
+Знімок previews/iphone-device-workspace.png показує інтерфейс із контрольними API-відповідями тестів (75% тощо), не реальні показники обладнання. Початкові екрани в решті знімків не містять телеметрії.

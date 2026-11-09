@@ -1,4 +1,4 @@
-# Архітектура VOLTOS 2.0
+# Архітектура VOLTOS 2.1
 
 ## Шлях даних
 
@@ -57,3 +57,9 @@ HTTP 401 видаляє локальну сесію. Локальний нати
 - https://github.com/XOTT69/oukite — Oukitel cloud research, згаданий у первинному VOLTOS.
 
 Підтримка протоколу не дорівнює перевірці всіх команд на конкретній прошивці. Потрібен фізичний QA.
+
+## Додано в 2.1
+
+src/oukitel-wire.ts — packet/TTLV/SHA-256 функції з обмеженнями довжини. src/oukitel-lan.ts — стан сесії, AES, підписка, freshness, readback. ios/App/App/OukitelLan.swift — обмежений Native TCP транспорт. api/oukitel?action=lan-key — native-сесія, ownership і поточний персональний ключ; ключі не додаються до загального списку пристроїв.
+
+src/device-insights.ts рахує оцінки тільки за наявними інтервалами. Вибір вкладки, прокручування й особиста назва належать конкретному пристрою. Форма не перебудовується під час polling чи blur. LAN ключі мають окремі device-only Keychain записи. У localStorage зберігаються IP, публічні device ID і прапорець автопідключення, але не authKey.

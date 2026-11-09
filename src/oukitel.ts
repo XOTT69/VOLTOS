@@ -5,10 +5,11 @@ export interface OukitelDevice {
 export interface OukitelReading {
  device:OukitelDevice; soc:number|null; inputWatts:number|null;outputWatts:number|null;
  temperatureC:number|null; acOn:boolean|null;dcOn:boolean|null;usbOn:boolean|null;
- cloudCheckedAt:string; source:'quectel-cloud-shadow'; freshness:'unknown';
+ cloudCheckedAt:string|null; measuredAt?:string; source:'quectel-cloud-shadow'|'quectel-lan'; freshness:'unknown'|'live';
 }
 export interface OukitelControlResult {accepted:boolean;confirmed:boolean;on:boolean;port:'ac'|'dc'|'usb';message:string}
 export const oukitel={
+ localKey:(d:OukitelDevice)=>endpoint<{authKey:string;deviceKey:string}>('oukitel','lan-key','POST',{pk:d.productKey,dk:d.deviceKey}),
  control:(d:OukitelDevice,port:'ac'|'dc'|'usb',on:boolean)=>
   endpoint<OukitelControlResult>('oukitel','control','POST',{pk:d.productKey,dk:d.deviceKey,port,on}),
  session:async()=>endpoint('oukitel','session') as Promise<{connected:boolean}>,

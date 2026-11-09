@@ -4,6 +4,7 @@ export type Sample = {
   at: number;
   source: Source;
   deviceId: string;
+  transport?: 'cloud' | 'lan';
   soc?: number | null;
   input?: number | null;
   output?: number | null;
@@ -41,6 +42,7 @@ export function validSamples(raw: unknown, now = Date.now()): Sample[] {
   return raw.filter((p): p is Sample => {
     if (!p || typeof p !== 'object' || !inRange(p.at, now - RETENTION, now + 5000) ||
         !['bluetti', 'oukitel', 'atlantic'].includes(p.source) || typeof p.deviceId !== 'string' || !p.deviceId || p.deviceId.length > 200) return false;
+    if(p.transport !== undefined && p.transport !== 'cloud' && p.transport !== 'lan') return false;
     const keys = p.source === 'atlantic' ? ['room', 'target'] : ['soc', 'input', 'output'];
     return keys.some(k => finite(p[k])) && keys.every(k => p[k] == null ||
       (k === 'soc' ? inRange(p[k], 0, 100) : k === 'room' || k === 'target' ? inRange(p[k], -40, 80) : inRange(p[k], 0, 100000)));
@@ -80,7 +82,7 @@ export function csv(samples: Sample[]): string {
   const escape = (v: unknown) => '"' + String(v ?? '').replace(/"/g, '""').replace(/^[=+@\-]/, "'$&") + '"';
   return '\uFEFF' + [
     'observed_at,source,device_id,soc_percent,input_w,output_w,room_c,target_c',
-    ...samples.map(p => [new Date(p.at).toISOString(), p.source === 'oukitel' ? 'oukitel_cloud_snapshot' : p.source === 'bluetti' ? 'bluetti_ble' : 'atlantic_cozytouch', p.deviceId, p.soc, p.input, p.output, p.room, p.target].map(escape).join(',')),
+    ...samples.map(p => [new Date(p.at).toISOString(), p.source === 'oukitel' ? p.transport === 'lan' ? 'oukitel_lan' : 'oukitel_cloud_snapshot' : p.source === 'bluetti' ? 'bluetti_ble' : 'atlantic_cozytouch', p.deviceId, p.soc, p.input, p.output, p.room, p.target].map(escape).join(',')),
   ].join('\r\n');
 }
 export function climateCapability(commands: string[], action: 'power' | 'temperature' | 'mode', on = true): boolean {

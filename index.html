@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-<meta name="theme-color" content="#f3f5f0"/>
+<meta name="theme-color" content="#0c0f16"/>
 <meta name="description" content="VOLTOS Energy OS — моніторинг, аналітика та керування зарядними станціями"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="VOLTOS"/>
 <link rel="manifest" href="/manifest.webmanifest"/>
 <link rel="icon" type="image/svg+xml" href="/icon.svg"/>
+<script>try{const t=localStorage.getItem("voltos-theme")||"dark";document.documentElement.dataset.theme=(t==="dark"||t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}catch{document.documentElement.dataset.theme="dark"}</script>
 <title>VOLTOS — Енергія твого дому</title>
 </head>
 <body><div id="app"></div><script type="module" src="/src/app.ts"></script></body>

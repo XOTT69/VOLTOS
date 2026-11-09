@@ -4,7 +4,7 @@ const config: CapacitorConfig = {
   appId: 'app.voltos.energy',
   appName: 'VOLTOS',
   webDir: 'dist',
-  backgroundColor: '#f3f5f0',
+  backgroundColor: '#0c0f16',
   ios: { contentInset: 'never' },
 };
 

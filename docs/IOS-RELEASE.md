@@ -1,4 +1,4 @@
-# Встановлення VOLTOS 2.0 на iPhone
+# Встановлення VOLTOS 2.1 на iPhone
 
 ## Підготовка
 
@@ -59,3 +59,7 @@ npm run ios:sync
 ## Що вже підтверджено без телефона
 
 Компіляція iOS arm64 без code signing, TypeScript клієнта й серверів, автоматичні тести логіки/протоколу/адаптерів/сесій та браузерні сценарії у WebKit і Chromium. Встановленого iOS Simulator runtime у середовищі немає, запуск в симуляторі не заявляється. Див. [звіт](VERIFICATION.md).
+
+## Wi-Fi Oukitel у 2.1
+
+Для прямого режиму потрібні одна Wi-Fi мережа, приватний IP, персональний authKey і дозвіл Local Network. Проєкт містить NSLocalNetworkUsageDescription; multicast entitlement не потрібен, broadcast discovery не використовується. Покроково: [OUKITEL-LAN.md](OUKITEL-LAN.md). Автоматичне отримання актуального ключа потребує публікації server endpoint із цієї гілки.

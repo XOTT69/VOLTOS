@@ -15,7 +15,7 @@ public class VoltosNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private let service = "app.voltos.energy.sessions.v1"
 
     private func query(_ call: CAPPluginCall) -> [String: Any]? {
-        guard let key = call.getString("key"), ["atlantic", "oukitel"].contains(key) else {
+        guard let key = call.getString("key"), ["atlantic", "oukitel"].contains(key) || key.range(of: "^oukitel-lan-[A-Za-z0-9_-]{1,96}$", options: .regularExpression) != nil else {
             call.reject("Невідомий тип сесії")
             return nil
         }
@@ -74,7 +74,7 @@ public class VoltosNativePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             controller.overrideUserInterfaceStyle = dark ? .dark : .light
             controller.darkAppearance = dark
-            let color = dark ? UIColor(red: 16/255, green: 23/255, blue: 19/255, alpha: 1) : UIColor(red: 243/255, green: 245/255, blue: 240/255, alpha: 1)
+            let color = dark ? UIColor(red: 12/255, green: 15/255, blue: 22/255, alpha: 1) : UIColor(red: 244/255, green: 245/255, blue: 248/255, alpha: 1)
             controller.view.backgroundColor = color
             self.bridge?.webView?.backgroundColor = color
             controller.setNeedsStatusBarAppearanceUpdate()
@@ -88,6 +88,7 @@ class VoltosViewController: CAPBridgeViewController {
     override var preferredStatusBarStyle: UIStatusBarStyle { darkAppearance ? .lightContent : .darkContent }
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(VoltosNativePlugin())
+        bridge?.registerPluginInstance(OukitelLanPlugin())
         webView?.scrollView.bounces = false
         webView?.isOpaque = false
     }
