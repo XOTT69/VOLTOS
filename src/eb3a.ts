@@ -1,5 +1,6 @@
 import { BleClient, numbersToDataView } from '@capacitor-community/bluetooth-le';
 import { Capacitor } from '@capacitor/core';
+import { frame, validFrame, allowedWrite, registers, type BleControls } from './protocol';
 
 const SERVICE='0000ff00-0000-1000-8000-00805f9b34fb';
 const NOTIFY='0000ff01-0000-1000-8000-00805f9b34fb';
@@ -8,23 +9,9 @@ const WRITE='0000ff02-0000-1000-8000-00805f9b34fb';
 export interface Eb3aReading {
   soc:number; inputWatts:number; outputWatts:number;
   dcInputWatts:number; acInputWatts:number; acOutputWatts:number; dcOutputWatts:number;
-  acEnabled:boolean; dcEnabled:boolean; measuredAt:string; deviceName:string;
-}
-function crc16(arr:readonly number[]):number {
-  let crc=65535;
-  for(const byte of arr){crc^=byte;for(let i=0;i<8;i++)crc=crc&1?(crc>>1)^0xa001:crc>>1;}
-  return crc;
-}
-function frame(fn:number, addr:number, count:number):number[]{
-  const bytes=[1,fn,addr>>8,addr&255,count>>8,count&255];
-  const crc=crc16(bytes);return [...bytes,crc&255,crc>>8];
+  acEnabled:boolean|null; dcEnabled:boolean|null; measuredAt:string; deviceName:string; deviceId:string;
 }
 function word(bytes:number[],at:number):number{return bytes[at*2]*256+bytes[at*2+1];}
-function valid(bytes:number[]):boolean{
-  if(bytes.length<5)return false;
-  const crc=crc16(bytes.slice(0,-2));
-  return bytes.at(-2)===(crc&255)&&bytes.at(-1)===(crc>>8);
-}
 
 export class Eb3aBle {
   private deviceId:string|null=null;
@@ -32,21 +19,29 @@ export class Eb3aBle {
   private chunks:number[]=[];
   private pending: {resolve:(bytes:number[])=>void;reject:(e:Error)=>void;fn:number;count:number;timer:ReturnType<typeof setTimeout>}|null=null;
   private queue:Promise<unknown>=Promise.resolve();
+  private generation=0;
+  private connecting=false;
   private disconnectedCallback:()=>void=()=>{};
   get connected(){return this.deviceId!==null;}
   onDisconnect(callback:()=>void){this.disconnectedCallback=callback;}
   async connect():Promise<void>{
+    if(this.connecting||this.connected)throw Error('Bluetooth вже підключається або підключено.');
     if(!Capacitor.isNativePlatform() && !('bluetooth' in navigator))
       throw Error('BLE потребує iOS/Android застосунку або сумісного браузера.');
+    this.connecting=true;
+    try {
     await BleClient.initialize();
     const selected=await BleClient.requestDevice({optionalServices:[SERVICE],displayMode:'list'});
-    if(!/EB3A|BLUETTI/i.test(selected.name||''))throw Error('Вибраний пристрій не схожий на BLUETTI EB3A.');
+    if(!/EB3A/i.test(selected.name||''))throw Error('Обери саме EB3A. Інші моделі BLUETTI мають інший протокол.');
     if(!selected.deviceId)throw Error('Не вибрано станцію.');
     this.deviceId=selected.deviceId;
+    this.generation++;
     this.name=selected.name||'BLUETTI EB3A';
     try{
       await BleClient.connect(selected.deviceId,()=>{
+        if(this.deviceId!==selected.deviceId)return;
         this.deviceId=null;
+        this.generation++;
         this.rejectPending(new Error('Bluetooth від’єднано'));
         this.disconnectedCallback();
       });
@@ -59,6 +54,7 @@ export class Eb3aBle {
       try{await BleClient.disconnect(selected.deviceId)}catch{}
       throw err;
     }
+    } finally { this.connecting=false; }
   }
   private rejectPending(error:Error){
     const p=this.pending;if(p){this.pending=null;clearTimeout(p.timer);p.reject(error);}
@@ -77,7 +73,7 @@ export class Eb3aBle {
       if(size<5||size>255){this.chunks.shift();continue;}
       if(this.chunks.length<size)return;
       const response=this.chunks.splice(0,size);
-      if(!valid(response))continue;
+      if(!validFrame(response))continue;
       const p=this.pending;
       if(!p)continue;
       this.pending=null;clearTimeout(p.timer);
@@ -87,7 +83,9 @@ export class Eb3aBle {
     }
   }
   private async transaction(fn:number,addr:number,count:number):Promise<number[]>{
+    const generation=this.generation;
     const task=async()=>{
+      if(generation!==this.generation)throw Error('Сесію Bluetooth змінено. Повтори дію.');
       const id=this.deviceId;if(!id)throw Error('Спочатку підключіть станцію.');
       this.chunks=[];
       const reply=new Promise<number[]>((resolve,reject)=>{
@@ -95,8 +93,9 @@ export class Eb3aBle {
         this.pending={resolve,reject,fn,count,timer};
       });
       try{
-        await BleClient.writeWithoutResponse(id,SERVICE,WRITE,numbersToDataView(frame(fn,addr,count)));
-        return await reply;
+        const sent=BleClient.writeWithoutResponse(id,SERVICE,WRITE,numbersToDataView(frame(fn,addr,count)));
+        const [response]=await Promise.all([reply,sent]);
+        return response;
       }catch(err){this.rejectPending(Error('Збій Bluetooth обміну'));throw err;}
     };
     const result=this.queue.then(task,task);
@@ -108,6 +107,7 @@ export class Eb3aBle {
     return response.slice(3,-2);
   }
   async refresh():Promise<Eb3aReading>{
+    const deviceId=this.deviceId,generation=this.generation;
     // Same read-only EB3A registers used by XOTT69/Stats.
     const a=await this.read(10,40), b=await this.read(50,9);
     const values=[...a,...b];
@@ -115,18 +115,24 @@ export class Eb3aBle {
     const dcIn=word(values,26),acIn=word(values,27),acOut=word(values,28),dcOut=word(values,29),soc=word(values,33);
     if(soc<0||soc>100||[dcIn,acIn,acOut,dcOut].some(x=>x>3000))
       throw Error('EB3A повернула нетипові показники. Перевірте прошивку.');
-    const switches=await this.read(3007,2);
+    let acEnabled:boolean|null=null,dcEnabled:boolean|null=null;
+    try {
+      const switches=await this.read(3007,2);
+      const ac=word(switches,0),dc=word(switches,1);
+      acEnabled=[0,1].includes(ac)?ac===1:null;
+      dcEnabled=[0,1].includes(dc)?dc===1:null;
+    } catch { /* Unsupported switches must not discard valid power measurements. */ }
+    if(!deviceId||this.deviceId!==deviceId||this.generation!==generation)throw Error('Bluetooth від’єднано під час зчитування');
     return {
       soc,inputWatts:dcIn+acIn,outputWatts:acOut+dcOut,
       dcInputWatts:dcIn,acInputWatts:acIn,acOutputWatts:acOut,dcOutputWatts:dcOut,
-      acEnabled:word(switches,0)!==0,dcEnabled:word(switches,1)!==0,
-      measuredAt:new Date().toISOString(),deviceName:this.name
+      acEnabled,dcEnabled,
+      measuredAt:new Date().toISOString(),deviceName:this.name,deviceId
     };
   }
   /** Explicit user-initiated single-register write, followed by independent readback. */
-  async setRegister(addr:3007|3008|3034|3063|3065|3066, value:number):Promise<number>{
-    const allowed:Record<number,number[]>={3007:[0,1],3008:[0,1],3034:[1,2,3,4],3063:[0,1],3065:[0,1,2],3066:[0,1]};
-    if(!allowed[addr]?.includes(value))throw Error('Недозволене значення команди.');
+  async setRegister(addr:number, value:number):Promise<number>{
+    if(!allowedWrite(addr,value))throw Error('Недозволене значення команди.');
     if(!this.connected)throw Error('BLUETTI не підключено.');
     const response=await this.transaction(6,addr,value);
     if(response[2]!==((addr>>8)&255)||response[3]!==addr%256||
@@ -137,12 +143,15 @@ export class Eb3aBle {
     return actual;
   }
   /** Optional register values are loaded separately so basic telemetry survives missing firmware features. */
-  async readControls():Promise<{led:number|null;eco:number|null;chargeMode:number|null;lifting:number|null}>{
-    const optional=async(addr:number)=>{try{return word(await this.read(addr,1),0)}catch{return null}};
-    return {led:await optional(3034),eco:await optional(3063),chargeMode:await optional(3065),lifting:await optional(3066)};
+  async readControls():Promise<BleControls>{
+    const optional=async(key:keyof BleControls)=>{
+      try{const def=registers[key],v=word(await this.read(def.address,1),0);return (def.values as readonly number[]).includes(v)?v:null}catch{return null}
+    };
+    return {led:await optional('led'),eco:await optional('eco'),ecoTime:await optional('ecoTime'),chargeMode:await optional('chargeMode'),lifting:await optional('lifting')};
   }
   async disconnect():Promise<void>{
     const id=this.deviceId;this.deviceId=null;
+    this.generation++;
     this.rejectPending(Error('Bluetooth від’єднано'));
     if(id){
       try{await BleClient.stopNotifications(id,SERVICE,NOTIFY)}catch{}

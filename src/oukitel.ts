@@ -21,9 +21,12 @@ export const oukitel={
    cloudCheckedAt:string;device:OukitelDevice
   };
   const attrs=raw.raw?.data?.customizeTslInfo??raw.raw?.customizeTslInfo??[];
+  if(!raw.device||raw.device.deviceKey!==d.deviceKey||raw.device.productKey!==d.productKey||
+     typeof raw.device.online!=='boolean'||!Number.isFinite(Date.parse(raw.cloudCheckedAt))||!Array.isArray(attrs))
+   throw Error('Oukitel повернув некоректні дані станції');
   const ids=new Map(attrs.map(item=>[String(item.abId),item.resourceValce]));
   const num=(id:string,min=-100,max=100000):number|null=>{
-   const x=ids.get(id);if(x===null||x===undefined||x==='')return null;
+   const x=ids.get(id);if((typeof x!=='number'&&typeof x!=='string')||String(x).trim()==='')return null;
    const v=Number(x);return Number.isFinite(v)&&v>=min&&v<=max?v:null;
   };
   const bool=(id:string):boolean|null=>{
@@ -34,7 +37,7 @@ export const oukitel={
   };
   const soc=num('1',0,100),input=num('4',0,3000),output=num('5',0,3000);
   if(soc===null&&input===null&&output===null)throw Error('Oukitel Cloud повернув порожню телеметрію. Останній стан не позначено як LIVE.');
-  return {device:d,soc,inputWatts:input,outputWatts:output,temperatureC:num('14',-20,100),acOn:bool('43'),usbOn:bool('44'),dcOn:bool('46'),
+  return {device:raw.device,soc,inputWatts:input,outputWatts:output,temperatureC:num('14',-20,100),acOn:bool('43'),usbOn:bool('44'),dcOn:bool('46'),
    cloudCheckedAt:raw.cloudCheckedAt,source:'quectel-cloud-shadow',freshness:'unknown'};
  }
 };

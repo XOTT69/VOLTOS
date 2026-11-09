@@ -1,10 +1,13 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { ApiRequest as VercelRequest, ApiResponse as VercelResponse } from '../server/http';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 
 const BASE='https://iot-api.quecteleu.com';
 const USER_DOMAIN='E.SP.4294967410';
 const cookieName='voltos_oukitel';
 const maxAge=12*60*60;
+class ProviderError extends Error {
+ constructor(message:string,public status:number){super(message)}
+}
 const attempts=new Map<string,{count:number,expires:number}>();
 function rateLimit(req:VercelRequest){
  const raw=String(req.headers['x-real-ip']||req.headers['x-forwarded-for']||'unknown').split(',')[0].trim();
@@ -62,8 +65,9 @@ async function provider(path:string,token?:string,body?:URLSearchParams){
   ...commonHeaders(token),...(body?{'content-type':'application/x-www-form-urlencoded'}:{})
  },body:body?.toString(),signal:AbortSignal.timeout(12000),cache:'no-store'});
  const data=await response.json().catch(()=>null);
- if(!response.ok||!data||![0,200].includes(Number(data.code??0))){
-  throw Error(response.status===401||Number(data?.code)===401?'Сесія Oukitel завершилася':'Сервіс Oukitel відхилив запит');
+ if(!response.ok||!data||![0,200].includes(Number(data.code))){
+  if(response.status===401||Number(data?.code)===401)throw new ProviderError('Сесія Oukitel завершилася',401);
+  throw Error('Сервіс Oukitel відхилив запит');
  }
  return data;
 }
@@ -114,18 +118,20 @@ async function sendCommand(token:string,device:Device,code:string,on:boolean){
   body:JSON.stringify(payload),signal:AbortSignal.timeout(12000),cache:'no-store'
  });
  const json=await response.json().catch(()=>null);
- if(!response.ok||!json||![0,200].includes(Number(json.code??0)))throw Error('Oukitel Cloud не прийняв команду');
+ if(response.status===401||Number(json?.code)===401)throw new ProviderError('Сесія Oukitel завершилася',401);
+ if(!response.ok||!json||![0,200].includes(Number(json.code)))throw Error('Oukitel Cloud не прийняв команду');
 }
 
 export default async function handler(req:VercelRequest,res:VercelResponse){
  headers(res);
  const action=Array.isArray(req.query.action)?req.query.action[0]:req.query.action;
  if(req.method==='POST'&&!isSameOrigin(req)&&!isNative(req))return res.status(403).json({error:'Недозволене джерело запиту'});
- if(action==='session'&&req.method==='GET')return res.status(200).json({connected:Boolean(decSession(req))});
+ if(action==='session'&&req.method==='GET')return res.status(200).json({connected:Boolean(decSession(req)),configured:Boolean(key()&&process.env.OUKITEL_APP_SECRET)});
  if(action==='logout'&&req.method==='POST'){
   res.setHeader('Set-Cookie',cookie('',0));return res.status(200).json({connected:false});
  }
  if(action==='login'&&req.method==='POST'){
+  if(!key()||!process.env.OUKITEL_APP_SECRET)return res.status(503).json({error:'Підключення Oukitel ще не налаштоване на сервері'});
   if(!rateLimit(req))return res.status(429).json({error:'Забагато спроб входу. Повторіть через 15 хвилин.'});
   if(Number(req.headers['content-length']||0)>4096)return res.status(413).json({error:'Завеликий запит'});
   const email=typeof req.body?.email==='string'?req.body.email.trim():'';
@@ -180,5 +186,5 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
    return res.status(200).json({device:owned,raw:data,cloudCheckedAt:new Date().toISOString(),source:'quectel-cloud-shadow',freshness:'unknown'});
   }
   return res.status(405).json({error:'Непідтримуваний запит'});
- }catch(e){return res.status(502).json({error:e instanceof Error?e.message:'Oukitel недоступний'});}
+ }catch(e){return res.status(e instanceof ProviderError?e.status:502).json({error:e instanceof Error?e.message:'Oukitel недоступний'});}
 }

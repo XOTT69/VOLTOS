@@ -1,81 +1,61 @@
-# VOLTOS 1.0 — iPhone personal testing build
+# Встановлення VOLTOS 2.0 на iPhone
 
-VOLTOS 1.0 is a real-data, device-integrated **personal testing release**. It is not yet a safety-certified product, multi-tenant SaaS, or App Store distribution.
+## Підготовка
 
-## Install from current XOTT69/VOLTOS checkout
+- Mac із Xcode та підтримкою встановленої версії iOS.
+- Node.js 22.12+.
+- iPhone з iOS 15+, кабель або налаштоване wireless debugging.
+- Власна Apple Team у Xcode. Для особистого запуску використовуй доступний тип підписування свого Apple ID; строк дії залежить від облікового запису.
 
-Requirements: macOS, recent Xcode with iPhone-compatible SDK, Node.js 22+, Apple Account configured for signing, USB/wireless iPhone pairing, iPhone Developer Mode enabled.
+## Цей checkout
 
-Open Terminal:
-
-```bash
-cd ~/VOLTOS
-git pull origin main
-npm install
+```sh
+cd "/Users/xott/Documents/ChatGPT/робота/VOLTOS"
+npm ci
 npm run ios
 ```
 
-If you checked out the repository elsewhere, use that location instead of `~/VOLTOS`.
+Скрипт збирає UI та API-типи, синхронізує нативні плагіни, перевіряє Bluetooth-дозвіл, генерує іконку та launch screen, відкриває `ios/App/App.xcodeproj`.
 
-The `ios` script:
-1. Builds Vite and performs TypeScript checks.
-2. Syncs Capacitor web assets/plugins.
-3. Adds the required Bluetooth privacy usage description.
-4. Generates the VOLTOS branded app icon.
-5. Opens the native project in Xcode.
+## Xcode
 
-In Xcode, open **App** (not a Swift Package), set **Signing & Capabilities → Team** to your Apple account, select your actual connected iPhone as destination, choose **Product → Clean Build Folder** if updating and click **Run (⌘R)**. If Xcode was previously open during a plugin sync, close/reopen the workspace.
+1. Дочекатися завершення завантаження Swift Package Manager dependencies.
+2. Вибрати **App → Signing & Capabilities → Automatically manage signing → свою Team**.
+3. Якщо bundle ID зайнятий іншою Team, задати власний у **App → General / Signing** та відповідно змінити `appId` у `capacitor.config.ts`. Зміна ID створить окремий sandbox і Keychain.
+4. Вибрати свій iPhone в списку пристроїв. Підтвердити Trust на телефоні, за потреби ввімкнути **Settings → Privacy & Security → Developer Mode** та виконати запропонований iOS перезапуск.
+5. Натиснути **Run (⌘R)**.
+6. Під час підключення EB3A дозволити Bluetooth. Відмову можна змінити в Settings → Privacy & Security → Bluetooth → VOLTOS.
 
-Do **not** delete the installed app for routine upgrades unless necessary: local telemetry history is stored on-device and deleting the app can delete that history.
+Не видаляй попередній застосунок для звичайного оновлення: локальна історія має залишитися в тому самому sandbox за незмінного bundle ID. Міграція читає попередні ключі історії, не видаляє їх та позначає записи без device ID окремими legacy-джерелами.
 
-## Device test plan
+## Оновлення коду
 
-### 1. BLUETTI EB3A
-- Enable Bluetooth on the iPhone and the EB3A.
-- VOLTOS → **Пристрої → Підключити EB3A**.
-- Grant Bluetooth permission and select the EB3A.
-- Compare SOC, input and output watts with the physical display.
-- On the **Пристрої** page, test safe commands one at a time: LED and ECO first; then charging mode; then DC; and AC only when no critical loads are connected. All commands ask for confirmation and attempt Modbus readback.
-- Close/reopen the app: native BLE must be reconnected if the phone released the peripheral. Background telemetry is not currently guaranteed.
+```sh
+npm ci
+npm run ios:sync
+```
 
-### 2. Oukitel P2001E Plus
-- VOLTOS → **Пристрої**; enter existing Oukitel/Wonderfree login credentials.
-- Select the correct power station if multiple devices are linked.
-- Check SOC, input, output and temperature. Cloud Shadow may be stale.
-- Test AC/DC/USB output changes ONLY with non-critical loads; verify physically. A Cloud acknowledgement and Cloud readback are **not** proof that an output changed on hardware.
-- If a reading is missing, VOLTOS displays an unknown value rather than 0.
+Потім Run у Xcode. Не потрібно повторно виконувати `cap add ios`. `npm ci` має передувати Swift Package resolution: локальні SPM-пакети посилаються на `node_modules`.
 
-### 3. Atlantic Altis Eco Boost
-- Enter the existing Atlantic Home app access password (not the Cozytouch credential).
-- Check room/target temperatures and operating mode.
-- Change target temperature in 0.5°C steps, confirm command and verify in the official Cozytouch app.
-- Test a safe mode change; do not rely on automation until independently verified.
+## Сервери
 
-### 4. Navigation & history
-- Go through Home / Devices / Analytics / Settings and confirm the lower tab bar remains visible while content scrolls.
-- Verify dashboards contain no synthetic battery or graph values.
-- Leave the app in foreground long enough to capture two or more samples; check the three data sources on Analytics.
-- Export CSV and verify timestamps. Cloud history is explicitly cloud snapshots, not guaranteed sampling instants.
-- Test app closing, network loss and reconnection. Data should not be labeled current when the underlying source is stale.
+Нативна збірка використовує `https://voltos-belli.vercel.app`. Після зміни serverless API ці зміни потрібно окремо розгорнути на бекенді; Xcode sync не публікує сервер. До розгортання клієнт сумісний із наявними session/state/control endpoints, але нові серверні перевірки зі зміни діятимуть лише після деплою.
 
-## Known limits
+Для іншого сервера створи `.env.local` з публічним `VITE_API_BASE=https://...`, потім `npm run ios:sync`. Provider keys та bridge secrets залишаються тільки на сервері.
 
-- **Native vendor sessions:** bearer sessions are kept in memory and can require login again after restarting the app. This avoids storing credentials insecurely; durable Keychain-based reauthentication will be a separate update.
-- **Background recording:** iOS suspends foreground JS and BLE. 24/7 history requires a separate always-on Edge/Cloud monitor and supported device integration.
-- **User accounts:** the current Atlantic bridge is privately configured for the owner's installation, not a multi-user commercial SaaS.
-- **Cloud reliability:** Oukitel protocol is vendor/reverse-engineering dependent. Some firmware versions or regions may differ.
-- **Push and Home Screen widgets:** not shipped yet.
-- **Physical controls:** always validate commands on the actual device before trusting remote operation with important loads.
+## Фізичний QA
 
-## Web preview
+- **Перший запуск:** три чесні стани без даних, доступна навігація, немає вигаданих відсотків.
+- **Екрани:** портрет/ландшафт, Dynamic Island/notch, клавіатура у формі, велика системна типографіка, світла/темна теми, VoiceOver.
+- **EB3A:** системний вибір, заряд/потужність, відмова Bluetooth, втрата зв’язку, повторне підключення. Порівняти показники з дисплеєм.
+- **Контрольований BLE-тест:** спершу LED; потім дозволені режими, AC/DC лише за безпечних навантажень. Перевірити readback. Протокольні тести не заміняють перевірку конкретної прошивки.
+- **Сценарії:** подивитись перелік змін, скасувати, виконати за безпечного навантаження. ECO може вимикати виходи. Перевірити зупинку після помилки й частковий результат.
+- **Oukitel:** власний вхід, актуальна онлайн/офлайн станція, перемикання станцій без змішування історії. Підтвердження і скасування AC/DC/USB.
+- **Atlantic:** вхід паролем Atlantic Home, порівняння температури й режиму з PWA, лише підтримувані команди; offline/error/retry.
+- **Keychain:** закрити застосунок і запустити знову до закінчення сесії; повторний вхід не потрібен. Прострочену сесію запитати знову. Вихід прибирає локальну сесію, зокрема без мережі на iPhone.
+- **CSV:** системне меню → Save to Files, відкрити файл, перевірити рядки. Історія попередньої версії доступна окремо.
+- **Фон:** перейти в інший застосунок, зачекати, повернутися. Дані оновлюються, прогалина історії не замальовується як безперервне вимірювання.
 
-Use https://voltos-belli.vercel.app to review the same interface. Safari PWA does not supply iPhone Web Bluetooth; test the EB3A connection in the Xcode-installed app.
+## Що вже підтверджено без телефона
 
-## Troubleshooting
-
-- **Old interface after upgrade:** run `npm run ios`, reopen the Capacitor Xcode workspace, clean build folder and Run.
-- **Xcode says build-only destination:** change destination from Any iOS Device to the connected iPhone.
-- **Untrusted developer:** iPhone → Settings → General → VPN & Device Management → trust your development certificate.
-- **No BLE permission:** ensure Info.plist contains NSBluetoothAlwaysUsageDescription and rebuild natively.
-- **Atlantic login works but no data:** check original Atlantic Home's Cozytouch account/token state.
-- **Oukitel Cloud login fails:** ensure your account's region and password match the manufacturer app.
+Компіляція iOS arm64 без code signing, TypeScript клієнта й серверів, автоматичні тести логіки/протоколу/адаптерів/сесій та браузерні сценарії у WebKit і Chromium. Встановленого iOS Simulator runtime у середовищі немає, запуск в симуляторі не заявляється. Див. [звіт](VERIFICATION.md).

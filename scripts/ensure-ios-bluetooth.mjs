@@ -7,7 +7,7 @@ if (!existsSync(path)) {
 } else {
   const xml = readFileSync(path, 'utf8');
   if (!xml.includes('<key>NSBluetoothAlwaysUsageDescription</key>')) {
-    const key = '    <key>NSBluetoothAlwaysUsageDescription</key>\n    <string>VOLTOS використовує Bluetooth для зчитування стану вашої зарядної станції BLUETTI.</string>\n';
+    const key = '    <key>NSBluetoothAlwaysUsageDescription</key>\n    <string>VOLTOS використовує Bluetooth для зчитування стану та керування твоєю зарядною станцією BLUETTI EB3A.</string>\n';
     if (!xml.includes('</dict>')) {
       console.error('Info.plist format unexpected; Bluetooth permission not inserted.');
       process.exitCode = 1;

@@ -1,31 +1,29 @@
-# Oukitel P2001E Plus in VOLTOS
+# Oukitel у VOLTOS 2.0
 
-This is an early integration adapted from [XOTT69/oukite](https://github.com/XOTT69/oukite). It uses Quectel EU Cloud endpoints over HTTPS.
+Інтеграція походить із [XOTT69/oukite](https://github.com/XOTT69/oukite) і використовує Quectel EU Cloud через HTTPS. Vendor API може змінюватися; це не гарантований публічний контракт виробника.
 
-## Connect without manual variables
+## Підключення
 
-1. Visit VOLTOS → Home / Devices → Oukitel P2001E Plus.
-2. Enter the email/password you already use with the Oukitel/Wonderfree account.
-3. The VOLTOS server performs the provider login and retrieves only your bound devices.
-4. Select your station (if more than one), then tap “Оновити показники”.
-5. SOC, input/output power and available output states appear using the actual cloud shadow response.
+Пристрої → Oukitel → email/пароль свого Oukitel/Wonderfree акаунта → обрати станцію. Пароль використовується тільки для входу. Список, показники та команди перевіряють належність пристрою серверному акаунту.
 
-Credentials are sent to the server only for login over HTTPS; the original password is not written to the browser, source repository, or server database. Provider access token is encrypted with AES-256-GCM in an HttpOnly Secure SameSite=Strict cookie on PWA. The Capacitor/Xcode client uses a native HTTPS request and keeps a bearer session token only in memory; restarting the native app may require another login.
+Клієнт використовує **актуальний `device.online` із відповіді state**, а не старий список. Перемикання станцій не змішує їхню історію. Типова номінальна ємність для прогнозу — 2048 Вт·год; для іншої моделі її потрібно змінити у Параметрах.
 
-## Server setup for a new self-hosted deployment
+## Сесії
 
-The maintainer must set:
-- `VOLTOS_SESSION_SECRET` (32+ character random secret)
-- `OUKITEL_APP_SECRET` (server-only Quectel app client secret matching the supported app protocol)
+Provider token зашифрований сервером AES-256-GCM у сесію VOLTOS. Web отримує HttpOnly, Secure, SameSite=Strict cookie; iPhone — непрозорий bearer, що зберігається в device-only Keychain. Пароль у localStorage чи діагностику не потрапляє.
 
-These are already configured in the existing VOLTOS Vercel project; **end users do not configure environment variables**. Provider-specific app keys may change and are not an official guaranteed public API.
+TTL — 12 годин, після HTTP 401 потрібен повторний вхід. Збереження в Keychain не подовжує строк дії. Нативний вихід видаляє сесію навіть без мережі; серверний bearer є stateless і самостійно завершується за TTL.
 
-## Data freshness
+## Сервер
 
-Oukitel Cloud Shadow may return the last known values while hardware is offline. VOLTOS labels this as Cloud and displays **cloud query time**, not guaranteed physical measurement time. A response without SOC / input / output is rejected rather than displayed as live.
+Для власної інсталяції потрібні тільки server-side змінні `VOLTOS_SESSION_SECRET` (32+ символи) і `OUKITEL_APP_SECRET` відповідного підтримуваного vendor-протоколу. Зразок — `.env.example`. Значення не повинні мати префікса `VITE_`.
 
-## Safety
+Публічний session endpoint наявного бекенду повернув `connected:false` під час перевірки без авторизації. Це не підтверджує працездатність vendor-входу; перевірка потребує власного акаунта.
 
-Cloud output control is **not enabled in VOLTOS** until model-specific commands and readback have been validated on physical hardware. The existing Oukitel Home application is left untouched.
+## Свіжість і керування
 
-For a future commercial multi-user platform, add persistent distributed login rate-limiting, consent and terms checks, tenant/account isolation beyond the current session, refresh and revocation policies, encrypted long-term credentials with explicit opt-in, and vendor integration governance.
+Cloud Shadow може повернути старі значення, зокрема під час офлайну станції. Показується **Cloud Snapshot** і час запиту, не гарантований час фізичного вимірювання. Невідомі поля залишаються `null`; порожня телеметрія відхиляється.
+
+В інтерфейсі доступні ручні AC/DC/USB команди лише для доступної станції з відомим станом виходу. Перед командою є підтвердження. Сервер повторно перевіряє власника, online, відомий стан, надсилає дозволену команду й читає cloud-стан. Відповідь розрізняє accepted та confirmed. Навіть cloud confirmed не є незалежним доказом фізичної зміни — потрібна перевірка конкретної станції та прошивки. Автоматичні команди у фоні не запускаються.
+
+Для комерційного відкритого продукту залишаються durable rate-limiting, окреме відкликання сесій, tenant isolation, аудит серверних команд та перевірка підтримуваних моделей. Наявний throttling у пам’яті процесу не є розподіленим захистом.

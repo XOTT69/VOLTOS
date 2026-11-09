@@ -10,7 +10,7 @@ VOLTOS can connect to the existing Atlantic Home Cozytouch integration without r
 4. The frontend receives only its own authenticated session. Atlantic provider tokens and the server-to-server bridge secret never leave the server.
 5. VOLTOS can read room temperature, target temperature, power and mode when available from Cozytouch, and send allowed commands with confirmation.
 
-On iPhone/Xcode the native client uses a short-lived in-memory bearer session transported over HTTPS; PWA uses HttpOnly, Secure cookies. The native session is intentionally not persisted between app restarts in this foundation version, so the user may need to sign in again.
+On iPhone/Xcode the native client persists its VOLTOS bearer session in the device-only iOS Keychain. PWA uses HttpOnly, Secure cookies. HTTP 401 removes the native session and requires a new login. Persistence does not extend the seven-day session lifetime. Passwords and Cozytouch provider tokens are not stored by the client.
 
 ## Server setup (maintainer only — already provisioned for this deployment)
 
