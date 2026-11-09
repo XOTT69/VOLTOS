@@ -1,25 +1,39 @@
 {
   "name": "voltos",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc --project tsconfig.server.json && vite build && node scripts/build-service-worker.mjs",
     "preview": "vite preview",
-    "ios": "npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && node scripts/ios-brand.mjs && npx cap open ios",
-    "ios:sync": "npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && node scripts/ios-brand.mjs"
+    "ios": "npm run ios:sync && npx cap open ios",
+    "ios:sync": "node scripts/patch-ios-plugins.mjs && node scripts/check-ios-bridge.mjs && npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && node scripts/ios-brand.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "check": "npm run build && npm test",
+    "test:offline": "playwright test --config playwright.offline.config.ts",
+    "postinstall": "node scripts/patch-ios-plugins.mjs"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "^8.0.0",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.0.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.0.0",
-    "lucide": "^0.468.0",
-    "@capacitor-community/bluetooth-le": "^8.0.0"
+    "@capacitor/share": "^8.0.3"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6",
+    "sharp": "^0.35.5",
     "typescript": "~5.9.3",
     "vite": "^7.3.0",
-    "sharp": "^0.34.4"
+    "vitest": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

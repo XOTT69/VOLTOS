@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { type ApiRequest as VercelRequest, type ApiResponse as VercelResponse, validClimateCommand } from '../server/http.js';
 import { createHmac, createHash, timingSafeEqual } from 'node:crypto';
 
 const cookieName='voltos_session';
@@ -23,7 +23,7 @@ function session(req:VercelRequest){
  );
  if(!cookie)return false;
  const [value,tag]=cookie.split('.');
- if(!value||!tag||!secureEqual(signed(value,secret),tag))return false;
+ if(!value||!tag||cookie.length>8192||cookie.split('.').length!==2||!secureEqual(signed(value,secret),tag))return false;
  try{
   const data=JSON.parse(Buffer.from(value,'base64url').toString()) as {expires:number};
   return Number.isFinite(data.expires)&&data.expires>Date.now();
@@ -73,7 +73,7 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
   if(supplied.length<4||supplied.length>256)return res.status(400).json({error:'Вкажіть пароль доступу Atlantic Home'});
   const verification=await relay('control',{action:'verifyAccess',password:supplied});
   if(verification.status!==200||!verification.payload||!(verification.payload as {verified?:boolean}).verified)
-    return res.status(verification.status===401?401:verification.status).json({error:(verification.payload as {error?:string}).error||'Atlantic Home не підтвердив пароль'});
+    return res.status(verification.status>=200&&verification.status<300?401:verification.status).json({error:(verification.payload as {error?:string}|null)?.error||'Atlantic Home не підтвердив пароль'});
   const payload=Buffer.from(JSON.stringify({expires:Date.now()+ttl*1000})).toString('base64url');
   const value=payload+'.'+signed(payload,secret);
   if(isNative(req))return res.status(200).json({authenticated:true,nativeToken:value});
@@ -86,7 +86,7 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
   return res.status(200).json({authenticated:false});
  }
  if(op==='session'&&req.method==='GET'){
-  return res.status(200).json({authenticated:session(req),configured:Boolean(sessionSecret()&&process.env.VOLTOS_BRIDGE_SECRET&&process.env.ATLANTIC_BRIDGE_URL)});
+  return res.status(200).json({authenticated:session(req),configured:Boolean(sessionSecret()&&(process.env.VOLTOS_BRIDGE_SECRET?.length??0)>=32&&process.env.ATLANTIC_BRIDGE_URL)});
  }
  if(!session(req))return res.status(401).json({error:'Увійдіть у VOLTOS для доступу до Atlantic.'});
  if(op==='state'&&req.method==='GET'){
@@ -98,7 +98,7 @@ export default async function handler(req:VercelRequest,res:VercelResponse){
   const body=req.body??{};
   if(!body||typeof body!=='object'||Array.isArray(body))return res.status(400).json({error:'Некоректні дані'});
   const action=body.action;
-  if(action!=='power'&&action!=='mode'&&action!=='temperature')return res.status(400).json({error:'Недозволена команда'});
+  if(!validClimateCommand(action,body.value))return res.status(400).json({error:'Недозволена команда або значення'});
   const data=await relay('control',{action,value:body.value});
   return res.status(data.status).json(data.payload);
  }

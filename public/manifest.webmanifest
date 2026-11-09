@@ -1,12 +1,12 @@
 {
-  "name": "VOLTOS — Energy OS",
+  "name": "VOLTOS — Енергія твого дому",
   "short_name": "VOLTOS",
   "description": "Моніторинг і керування домашньою енергією",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#07111f",
-  "theme_color": "#07111f",
+  "background_color": "#0c0f16",
+  "theme_color": "#0c0f16",
   "lang": "uk",
   "icons": [
     {

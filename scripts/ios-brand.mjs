@@ -32,3 +32,12 @@ if(!existsSync(contentPath)){
   process.exitCode=1;
  }else console.log('VOLTOS branded iOS icons generated:',count);
 }
+
+const splashDir='ios/App/App/Assets.xcassets/Splash.imageset';
+if(existsSync(join(splashDir,'Contents.json'))){
+ const splash=Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732"><rect width="2732" height="2732" fill="#0c0f16"/><rect x="1206" y="1160" width="320" height="320" rx="90" fill="#151a26"/><path d="m1385 1225-92 126h66l-15 111 93-140h-68z" fill="#b9bbff"/><text x="1366" y="1580" font-family="Helvetica,Arial,sans-serif" font-size="59" font-weight="bold" letter-spacing="9" text-anchor="middle" fill="#f0f3fc">VOLTOS</text></svg>');
+ const catalog=JSON.parse(readFileSync(join(splashDir,'Contents.json'),'utf8'));
+ const rendered=await sharp(splash).png().toBuffer();
+ for(const asset of catalog.images)if(asset.filename)writeFileSync(join(splashDir,asset.filename),rendered);
+ console.log('VOLTOS launch screen generated');
+}

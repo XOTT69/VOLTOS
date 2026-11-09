@@ -1,32 +1,65 @@
-# VOLTOS architecture roadmap
+# Архітектура VOLTOS 2.1
 
-## Core invariants
+## Шлях даних
 
-- All user-facing telemetry has a measuredAt timestamp and a data source. A successful HTTP call is not proof of fresh device telemetry.
-- Each device has an explicit capability map; unsupported actions must never be shown as available.
-- A command needs device ownership authorization, user confirmation where applicable, timeout, readback verification and audit logging.
-- Demo fixtures are always explicitly labeled and cannot send any physical write commands.
-- Secrets and vendor tokens never appear in frontend bundles or repositories.
-- Multi-tenant isolation is mandatory before opening accounts to external testers.
-- Never automatically shut off critical output loads.
+```text
+iPhone / WKWebView
+ ├─ UI та події: src/app.ts + src/ui.ts + src/app.css
+ ├─ Зведення, валідація, графіки, CSV: src/core.ts
+ ├─ Локальна історія і журнал: src/storage.ts
+ ├─ BLUETTI: src/eb3a.ts → src/protocol.ts → native Bluetooth LE → EB3A
+ ├─ Oukitel: src/oukitel.ts → src/native-api.ts → /api/oukitel → Quectel
+ ├─ Atlantic: src/atlantic.ts → src/native-api.ts → /api/bridge → Atlantic Home → Cozytouch
+ └─ src/native.ts
+     ├─ Swift VoltosNative → iOS Keychain / appearance
+     ├─ Filesystem Cache → Share Sheet
+     └─ Haptics
+```
 
-## Planned packages
+Клієнт і сервер типізуються окремо; production build виконує обидві перевірки. `server/http.ts` містить структурні типи Vercel HTTP та перевірку команд клімату. SDK Vercel у застосунку не потрібен.
 
-- packages/core: normalized telemetry and device capabilities
-- packages/adapters/bluetti: EB3A transport and tested BLE register mappings
-- packages/adapters/oukitel: OUKITEL cloud and optional LAN transports
-- edge/: LAN/BLE collector with encrypted outbound pairing and local history
-- services/api/: authenticated multi-user API
-- services/telemetry/: timeseries ingestion, retention, downsampling
-- apps/mobile: Capacitor with later native BLE bridge as needed
+## Інваріанти
 
-## Phase 0.1 (this repository)
+- Невідомі значення залишаються `null` / «—». Реальний нуль не дорівнює відсутності вимірювання.
+- Резерв зважується за ємністю лише доступних джерел. Якщо в активного джерела метрика невідома, підсумок цієї метрики також невідомий.
+- BLE вважається свіжим до 45 секунд без помилки обміну. Cloud/клімат — доступними після успішного запиту протягом 125 секунд. Це строк придатності відповіді, не гарантія свіжості cloud-вимірювання.
+- Oukitel завжди позначений як Cloud Snapshot. Онлайн-стан береться з відповіді сервера, не зі старого списку пристроїв.
+- Історія має `source`, `deviceId`, timestamp і nullable метрики. Міграція старої версії лишає невідомий пристрій `legacy-*`. Не можна змішувати дві станції.
+- Графік використовує timestamps. Прогалини понад 10 хвилин переривають лінію.
+- Команда потребує ручного підтвердження, актуального доступу й підтримуваного параметра. Демо-транспортів у production немає.
+- BLE: черга транзакцій, CRC, таймаут, перелік дозволених регістрів, звірка Modbus ACK та незалежне читання після запису. Зміна з’єднання скасовує стару чергу.
+- Відсутність необов’язкового регістра не знищує базову телеметрію. Невідомий регістр не доступний для запису.
+- Генерації cloud-сесій не дозволяють запізнілій відповіді відновити пристрій після виходу.
+- Сценарії EB3A зупиняються на першій помилці, описують завершені кроки та не виконують автоматичного відкату.
 
-Buildable Vite + TypeScript standalone UI and Capacitor configuration. All numbers are intentionally simulated; production connectivity and account management are NOT implemented.
+## Сесії
 
-## Integration source projects
+Веб: HttpOnly + Secure + SameSite=Strict cookie. iOS: власна сесія VOLTOS у Keychain (`WhenUnlockedThisDeviceOnly`, без синхронізації iCloud). Пароль використовується лише для HTTPS-входу, не записується в історію чи діагностику. Oukitel provider token залишається всередині зашифрованої AES-GCM серверної сесії. Native bearer не є провайдерським plaintext-токеном.
 
-- https://github.com/XOTT69/Stats — existing EB3A Web Bluetooth research
-- https://github.com/XOTT69/oukite — existing OUKITEL cloud telemetry and worker research
+HTTP 401 видаляє локальну сесію. Локальний нативний вихід працює й без мережі. Серверні сесії зараз stateless: відкликання окремого викраденого bearer до TTL не реалізоване. Для публічного релізу потрібне серверне сховище сесій.
 
-Do not copy confidential tokens, access credentials, copyrighted art or potentially unsafe write sequences from either repository.
+## Зберігання
+
+Історія — localStorage в app sandbox, не секретні сесії. Крок не частіше хвилини на пристрій, до 30 днів, загальний ліміт 130 000 записів. За недоступності сховища застосунок попереджає один раз, а зчитування пристроїв продовжується. Journal — останні 50 подій без облікових даних.
+
+Експорт iOS пише CSV в Cache і відкриває системний Share Sheet. Файл може бути видалений системою з cache. Користувач сам обирає збереження у Files чи надсилання.
+
+## Фон та offline
+
+Видимість сторінки й App lifecycle призупиняють polling. Повернення запускає оновлення. Без інтернету локальний BLE доступний, cloud-керування чекає мережі. У production PWA кешується точний список зібраних JS/CSS; API не кешується. Нативний застосунок містить вебресурси в bundle і не реєструє service worker.
+
+Цілодобовий збір, push, віджети й автоматизації потребують постійно активного зовнішнього джерела, а не обіцянки фонового JavaScript.
+
+## Вихідні інтеграції
+
+- https://github.com/XOTT69/Stats — EB3A, підтверджені в дослідженні регістри та сценарії.
+- https://github.com/XOTT69/atlantic-home — Cozytouch, захищений міст, енергоісторія окремої PWA.
+- https://github.com/XOTT69/oukite — Oukitel cloud research, згаданий у первинному VOLTOS.
+
+Підтримка протоколу не дорівнює перевірці всіх команд на конкретній прошивці. Потрібен фізичний QA.
+
+## Додано в 2.1
+
+src/oukitel-wire.ts — packet/TTLV/SHA-256 функції з обмеженнями довжини. src/oukitel-lan.ts — стан сесії, AES, підписка, freshness, readback. ios/App/App/OukitelLan.swift — обмежений Native TCP транспорт. api/oukitel?action=lan-key — native-сесія, ownership і поточний персональний ключ; ключі не додаються до загального списку пристроїв.
+
+src/device-insights.ts рахує оцінки тільки за наявними інтервалами. Вибір вкладки, прокручування й особиста назва належать конкретному пристрою. Форма не перебудовується під час polling чи blur. LAN ключі мають окремі device-only Keychain записи. У localStorage зберігаються IP, публічні device ID і прапорець автопідключення, але не authKey.

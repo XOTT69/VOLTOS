@@ -7,3 +7,8 @@ dist/
 *.log
 ios/App/Pods/
 ios/DerivedData/
+
+playwright-report/
+test-results/
+coverage/
+.vercel/
