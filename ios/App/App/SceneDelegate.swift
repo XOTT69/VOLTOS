@@ -8,7 +8,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        // Use the app bridge: it registers Keychain and the Oukitel LAN plugin.
+        // The scene creates its window programmatically, bypassing Main.storyboard.
+        window?.rootViewController = VoltosViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)

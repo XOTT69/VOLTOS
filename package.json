@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && tsc --project tsconfig.server.json && vite build && node scripts/build-service-worker.mjs",
     "preview": "vite preview",
     "ios": "npm run ios:sync && npx cap open ios",
-    "ios:sync": "node scripts/patch-ios-plugins.mjs && npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && node scripts/ios-brand.mjs",
+    "ios:sync": "node scripts/patch-ios-plugins.mjs && node scripts/check-ios-bridge.mjs && npm run build && npx cap sync ios && node scripts/ensure-ios-bluetooth.mjs && node scripts/ios-brand.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "check": "npm run build && npm test",

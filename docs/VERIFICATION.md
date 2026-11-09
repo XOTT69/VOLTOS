@@ -73,3 +73,9 @@ Production offline-тест виявив, що `Vary: Origin` на статич�
 - OukitelLan.swift включений у нативну компіляцію; запуск на власній Oukitel не заявляється.
 
 Знімок previews/iphone-device-workspace.png показує інтерфейс із контрольними API-відповідями тестів (75% тощо), не реальні показники обладнання. Початкові екрани в решті знімків не містять телеметрії.
+
+## Виправлення запуску native bridge після звіту з iPhone
+
+Фізичний запуск виявив помилку, якої не показує компіляція: SceneDelegate створював стандартний CAPBridgeViewController, хоча Main.storyboard посилався на VoltosViewController. Програмне створення root controller обходило storyboard і реєстрацію VoltosNative/OukitelLan. SceneDelegate тепер створює VoltosViewController безпосередньо.
+
+Перед ios:sync виконується scripts/check-ios-bridge.mjs: перевіряє фактичний scene entrypoint, відповідність JS plugin names, реєстрацію Swift plugin instances та включення Swift-файлів у проєкт. Це статична перевірка нативного wiring, не заміна фізичного запуску. Повторна компіляція iPhone завершилась BUILD SUCCEEDED; повторний запуск на телефоні потребує встановлення оновленого binary через Xcode.
