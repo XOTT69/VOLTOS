@@ -5,7 +5,8 @@ import { Share } from '@capacitor/share';
 export const native = Capacitor.isNativePlatform();
 interface SecureSessions {
   setAppearance(options: { dark: boolean }): Promise<void>;
-  getSession(options: { key: string }): Promise<{ value?: string }>;
+  // Older iOS builds resolve without a payload when a Keychain item is absent.
+  getSession(options: { key: string }): Promise<{ value?: string | null } | null | undefined>;
   setSession(options: { key: string; value: string }): Promise<void>;
   removeSession(options: { key: string }): Promise<void>;
 }

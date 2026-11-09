@@ -75,7 +75,7 @@ async function connectLan(form?: HTMLFormElement, automatic=false) {
  (document.activeElement as HTMLElement)?.blur();
  state.lanBusy = true; state.lanError = ''; render();
  try {
-  if(!key)key = (await SecureSession.getSession({key:keyName})).value || '';
+  if(!key)key = (await SecureSession.getSession({key:keyName}))?.value || '';
   if(!key && state.oukAuthed && state.online){
    const result = await oukitel.localKey(device);
    if(result.deviceKey !== device.deviceKey)throw Error('Ключ належить іншій станції');

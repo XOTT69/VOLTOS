@@ -8,7 +8,7 @@
 |---|---|---|
 | TypeScript клієнта та API | Пройдено | Обидва tsconfig виконуються під час build |
 | Production Vite build | Пройдено | 41 модуль, основний JS близько 37 KB gzip, CSS близько 7.4 KB gzip |
-| Unit / integration | 54 тести пройдено | Телеметрія, CSV, протокол, транспорт BLE, адаптери, API-доступ і ownership, міграція, native bearer/Keychain lifecycle через mock |
+| Unit / integration | 58 тестів пройдено | Телеметрія, CSV, протокол, транспорт BLE, адаптери, API-доступ і ownership, міграція, native bearer/Keychain lifecycle через mock |
 | WebKit iPhone viewport | 13 сценаріїв пройдено | Браузер WebKit із параметрами iPhone, не iOS Simulator |
 | Chromium mobile viewport | 13 сценаріїв пройдено | Контрольні API-відповіді, перевірка UI і подій |
 | Production PWA offline | 1 тест пройдено | Перезавантаження без мережі, precache JS/CSS, відсутність API у кеші |
@@ -88,3 +88,11 @@ Production offline-тест виявив, що `Vary: Origin` на статич�
 Production smoke-check виявив `ERR_MODULE_NOT_FOUND` у Atlantic API: runtime-імпорт `../server/http` не містив розширення. Production повернуто до попереднього працездатного deployment на час виправлення. Імпорт змінено на `../server/http.js`, а серверний TypeScript переведено на `NodeNext`, щоб збірка відхиляла такі несумісні з Node ESM імпорти.
 
 Після виправлення `npm run check` пройшов (54 тести). Обидва серверні handlers додатково скомпільовано в тимчасову директорію та імпортовано звичайним Node без Vite/Vitest resolver: session-запити повернули HTTP 200. Це перевірка запуску скомпільованих модулів, без входу до vendor-акаунтів.
+
+## Порожній Keychain після встановлення на iPhone
+
+Повідомлення `undefined is not an object (evaluating 'e.value')` відповідало двом читачам `getSession`: відновленню Cloud-сесії та читанню персонального LAN-ключа. Для відсутнього запису Swift викликав `call.resolve()` без payload; Capacitor передавав JavaScript значення `undefined`, тоді як клієнт очікував об'єкт.
+
+Swift тепер повертає `{value: null}`. Обидва читачі також підтримують порожній payload старішої збірки. Помилка читання заблокованого Keychain продовжує відхиляти запит і дозволяє повтор, без підміни помилки відсутньою сесією.
+
+Перевірено `npm run check` (58 тестів), `npm run ios:sync` та успішну unsigned-компіляцію iPhone. Новий Playwright-сценарій пройшов окремо у WebKit і Chromium: емулює native Keychain з `undefined`, відновлює Cloud-стан, залишає ручний LAN-ключ порожнім і перевіряє, що запит ключа надсилається для обраної станції. Відповіді контрольні; фізичний handshake зі станцією цей тест не виконує.

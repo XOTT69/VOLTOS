@@ -31,7 +31,7 @@ public class VoltosNativePlugin: CAPPlugin, CAPBridgedPlugin {
         request[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(request as CFDictionary, &result)
-        if status == errSecItemNotFound { call.resolve(); return }
+        if status == errSecItemNotFound { call.resolve(["value": NSNull()]); return }
         guard status == errSecSuccess, let data = result as? Data,
               let value = String(data: data, encoding: .utf8) else {
             call.reject("Не вдалося прочитати захищену сесію. Розблокуй iPhone та повтори.")

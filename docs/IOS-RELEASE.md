@@ -37,6 +37,8 @@ npm run ios:sync
 
 Потім Run у Xcode. Не потрібно повторно виконувати `cap add ios`. `npm ci` має передувати Swift Package resolution: локальні SPM-пакети посилаються на `node_modules`.
 
+Якщо попередня збірка показувала `undefined is not an object (evaluating 'e.value')`, установи оновлення через Run: виправлено читання порожнього Keychain під час першого входу та отримання LAN-ключа. Видаляти застосунок або очищати Keychain не потрібно.
+
 ## Сервери
 
 Нативна збірка використовує `https://voltos-belli.vercel.app`. Backend 2.1, включно з отриманням Oukitel LAN-ключа, опубліковано 9 листопада 2026 (commit `97e21db88293ca8cb5eb65d9c4ff23982c277138`). Після наступних змін serverless API їх потрібно окремо розгортати на бекенді; Xcode sync не публікує сервер.

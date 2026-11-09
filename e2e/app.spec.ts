@@ -171,3 +171,29 @@ test('explains native LAN requirements instead of faking a browser connection', 
  await expect(page.locator('#detail-content')).toContainText('браузер не підтримує');
  await page.locator('[data-transport="cloud"]').click(); await expect(page.locator('#ouk-login')).toBeVisible();
 });
+test('an empty native Keychain permits session restore and automatic LAN key lookup', async ({ page }) => {
+ const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+ // Emulate the older Swift bridge's resolve() without data, not browser storage.
+ await page.route('**/src/native.ts', route => route.fulfill({ contentType: 'application/javascript', body: `
+  export const native = true;
+  export const SecureSession = {
+   getSession: async () => undefined,
+   setSession: async () => {}, removeSession: async () => {}, setAppearance: async () => {}
+  };
+  export function tap() {} export async function shareCsv() {}
+ ` }));
+ await mockApi(page, { connected: true });
+ let requestedDevice: unknown;
+ await page.route('**/api/oukitel?action=lan-key', async route => {
+  requestedDevice = route.request().postDataJSON();
+  await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Контрольна відповідь отримання LAN-ключа' }) });
+ });
+ await page.goto('/'); await openOukitel(page);
+ await expect(page.locator('.detail-metrics')).toContainText('75');
+ await page.locator('[data-transport="lan"]').click();
+ await page.locator('#lan-host').fill('192.168.1.50');
+ await page.locator('#lan-connect button').click();
+ await expect(page.locator('#detail-content')).toContainText('Контрольна відповідь отримання LAN-ключа');
+ expect(requestedDevice).toEqual({ pk: device.productKey, dk: device.deviceKey });
+ expect(errors).toEqual([]);
+});

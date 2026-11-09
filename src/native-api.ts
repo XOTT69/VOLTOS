@@ -14,7 +14,7 @@ export async function clearNativeToken(which: Integration) {
 }
 async function restoreToken(which: Integration) {
   if (!native) return;
-  restored[which] ??= SecureSession.getSession({ key: which }).then(result => { if (result.value) tokens[which] = result.value; }).catch(error => { delete restored[which]; throw error; });
+  restored[which] ??= SecureSession.getSession({ key: which }).then(result => { if (result?.value) tokens[which] = result.value; }).catch(error => { delete restored[which]; throw error; });
   await restored[which];
 }
 export async function endpoint<T>(which: Integration, action: string, method: 'GET' | 'POST' = 'GET', payload?: unknown, params?: Record<string, string>): Promise<T> {

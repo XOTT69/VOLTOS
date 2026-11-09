@@ -3,9 +3,17 @@ const mocks = vi.hoisted(() => ({ request: vi.fn(), get: vi.fn(), set: vi.fn(), 
 vi.mock('@capacitor/core', () => ({ CapacitorHttp: { request: mocks.request } }));
 vi.mock('../src/native', () => ({ native: true, SecureSession: { getSession: mocks.get, setSession: mocks.set, removeSession: mocks.remove } }));
 beforeEach(() => {
- vi.resetModules(); mocks.get.mockResolvedValue({}); mocks.set.mockResolvedValue(undefined); mocks.remove.mockResolvedValue(undefined);
+ vi.resetModules(); mocks.get.mockResolvedValue(undefined); mocks.set.mockResolvedValue(undefined); mocks.remove.mockResolvedValue(undefined);
 });
 afterEach(() => vi.clearAllMocks());
+it.each([undefined, null, {}, { value: null }])('permits a first login when Keychain returns %j', async missing => {
+ mocks.get.mockResolvedValue(missing);
+ mocks.request.mockResolvedValue({ status: 200, data: { authenticated: true, nativeToken: 'first-session' } });
+ const { endpoint } = await import('../src/native-api');
+ await expect(endpoint('atlantic', 'login', 'POST', { password: 'test-only' })).resolves.toEqual({ authenticated: true });
+ expect(mocks.request.mock.calls[0][0].headers.Authorization).toBeUndefined();
+ expect(mocks.set).toHaveBeenCalledWith({ key: 'atlantic', value: 'first-session' });
+});
 it('restores native authorization from Keychain, never localStorage', async () => {
  mocks.get.mockResolvedValue({ value: 'stored-session' });
  mocks.request.mockResolvedValue({ status: 200, data: { connected: true } });
